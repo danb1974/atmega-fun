@@ -1,0 +1,3 @@
+### Just a little fun with some chinese arduino pro mini board
+
+On mine led is on pin 13...
