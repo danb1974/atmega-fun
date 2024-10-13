@@ -8,12 +8,16 @@
 #define CHN_THR 1
 
 // inputs from RC receiver (must be INT - not PCINT - capable pins)
-#define PIN_STR_INPUT 2   // steering channel on INT0
-#define PIN_THR_INPUT 3   // throttle channel on INT1
+uint8_t chnInputPins[CHN_COUNT] = {
+  2,  // steering channel on INT0 pin
+  3,  // throttle channel on INT1 pin
+};
 
 // leds for visualising input level (must be pwm-capable pins)
-#define PIN_STR_LED 10
-#define PIN_THR_LED 11
+uint8_t chnOutputLeds[CHN_COUNT] = {
+  10, // steering led
+  11  // throttle led
+};
 
 //
 
@@ -22,7 +26,7 @@ volatile uint32_t chnLastPulseWidth[CHN_COUNT];
 
 void handleChnEvent(uint32_t now, uint8_t chnIndex, uint8_t chnState) {
   if (chnState == 1) {
-    // up transition
+    // up transition, record start
     chnLastPulseStart[chnIndex] = now;
     return;
   }
@@ -32,7 +36,7 @@ void handleChnEvent(uint32_t now, uint8_t chnIndex, uint8_t chnState) {
     return;
   }
 
-  // down transition
+  // down transition, compute width
   uint16_t pulseWidth = now - chnLastPulseStart[chnIndex];
   if (pulseWidth < 1000 || pulseWidth > 2000) {
     // invalid
@@ -43,41 +47,20 @@ void handleChnEvent(uint32_t now, uint8_t chnIndex, uint8_t chnState) {
 
 void strInterrupt() {
   uint32_t now = micros();
-  uint8_t state = digitalRead(PIN_STR_INPUT);
+  uint8_t state = digitalRead(chnInputPins[CHN_STR]);
   handleChnEvent(now, CHN_STR, state);
 }
 
 void thrInterrupt() {
   uint32_t now = micros();
-  uint8_t state = digitalRead(PIN_THR_INPUT);
+  uint8_t state = digitalRead(chnInputPins[CHN_THR]);
   handleChnEvent(now, CHN_THR, state);
 }
 
-void setup() {
+void printPulseData(const uint8_t chnIndex, uint16_t pulseWidth, uint8_t ledValue) {
 #ifdef DEBUG
-  Serial.begin(9600);
-  Serial.println("Initializing...");
-#endif
-
-  pinMode(LED_BUILTIN, OUTPUT);
-
-  pinMode(PIN_STR_LED, OUTPUT);
-  pinMode(PIN_THR_LED, OUTPUT);
-
-  pinMode(PIN_STR_INPUT, INPUT);
-  pinMode(PIN_THR_INPUT, INPUT);
-
-  attachInterrupt(digitalPinToInterrupt(PIN_STR_INPUT), strInterrupt, CHANGE);
-  attachInterrupt(digitalPinToInterrupt(PIN_THR_INPUT), thrInterrupt, CHANGE);
-
-#ifdef DEBUG
-  Serial.println("Interrupts set, ready to roll");
-#endif
-}
-
-void printPulseData(const char *label, uint16_t pulseWidth, uint8_t ledValue) {
-#ifdef DEBUG
-  Serial.print(label);
+  Serial.print("Channel ");
+  Serial.print(chnIndex)
   Serial.print(": ");
   Serial.print(pulseWidth);
   Serial.print("us pulse width, led output ");
@@ -89,19 +72,36 @@ uint8_t pulseWidthToLedValue(uint16_t pulseWidth) {
   return pulseWidth > 0 ? (pulseWidth - 1000) / 4 : 0;
 }
 
+void setup() {
+#ifdef DEBUG
+  Serial.begin(9600);
+  Serial.println("Initializing...");
+#endif
+
+  pinMode(LED_BUILTIN, OUTPUT);
+
+  for (uint8_t chnIndex = 0; chnIndex < CHN_COUNT; chnIndex++) {
+    pinMode(chnInputPins[chnIndex], INPUT);
+    pinMode(chnOutputLeds[chnIndex], OUTPUT);
+  }
+  
+  attachInterrupt(digitalPinToInterrupt(chnInputPins[CHN_STR]), strInterrupt, CHANGE);
+  attachInterrupt(digitalPinToInterrupt(chnInputPins[CHN_THR]), thrInterrupt, CHANGE);
+
+#ifdef DEBUG
+  Serial.println("Interrupts set, ready to roll");
+#endif
+}
+
 uint8_t intLedState = 0;
 
 void loop() {
-  uint8_t ledValues[CHN_COUNT];
-  for (uint8_t i = 0; i < CHN_COUNT; i++) {
-    ledValues[i] = pulseWidthToLedValue(chnLastPulseWidth[i]);
+  for (uint8_t chnIndex = 0; chnIndex < CHN_COUNT; chnIndex++) {
+    uint8_t ledValue = pulseWidthToLedValue(chnLastPulseWidth[chnIndex]);
+
+    analogWrite(chnOutputLeds[chnIndex], ledValue);
+    printPulseData(chnIndex, chnLastPulseWidth[chnIndex], ledValue);
   }
-
-  analogWrite(PIN_STR_LED, ledValues[CHN_STR]);
-  analogWrite(PIN_THR_LED, ledValues[CHN_THR]);
-
-  printPulseData("STR", chnLastPulseWidth[CHN_STR], ledValues[CHN_STR]);
-  printPulseData("THR", chnLastPulseWidth[CHN_THR], ledValues[CHN_THR]);
 
   digitalWrite(LED_BUILTIN, intLedState++ & 0x10 ? 1 : 0); // slow down the blink
 
