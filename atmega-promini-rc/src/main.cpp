@@ -59,7 +59,10 @@ void setup() {
   Serial.println("Initializing...");
 #endif
 
+  pinMode(LED_BUILTIN, OUTPUT);
+
   pinMode(PIN_STR_LED, OUTPUT);
+  pinMode(PIN_THR_LED, OUTPUT);
 
   pinMode(PIN_STR_INPUT, INPUT);
   pinMode(PIN_THR_INPUT, INPUT);
@@ -86,6 +89,8 @@ uint8_t pulseWidthToLedValue(uint16_t pulseWidth) {
   return pulseWidth > 0 ? (pulseWidth - 1000) / 4 : 0;
 }
 
+uint8_t intLedState = 0;
+
 void loop() {
   uint8_t ledValues[CHN_COUNT];
   for (uint8_t i = 0; i < CHN_COUNT; i++) {
@@ -97,6 +102,8 @@ void loop() {
 
   printPulseData("STR", chnLastPulseWidth[CHN_STR], ledValues[CHN_STR]);
   printPulseData("THR", chnLastPulseWidth[CHN_THR], ledValues[CHN_THR]);
+
+  digitalWrite(LED_BUILTIN, intLedState++ & 0x10 ? 1 : 0); // slow down the blink
 
 #ifdef DEBUG
   delay(100);
