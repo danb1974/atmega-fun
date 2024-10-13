@@ -1,7 +1,7 @@
 #include <Arduino.h>
 
-#define PIN_LED 13        // really???
-#define BLINK_PERIOD 500  // ms between state changes
+#define PIN_LED LED_BUILTIN
+#define BLINK_PERIOD 100    // ms between state changes
 
 //
 
