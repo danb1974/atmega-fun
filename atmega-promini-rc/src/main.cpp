@@ -1,6 +1,7 @@
 #include <Arduino.h>
+#include<EnableInterrupt.h>
 
-//#define DEBUG
+#define DEBUG
 
 // channel count and indexes (order does not actually matter but keep same as on receiver)
 #define CHN_COUNT 2
@@ -18,6 +19,9 @@ uint8_t chnOutputLeds[CHN_COUNT] = {
   10, // steering led
   11  // throttle led
 };
+
+#define SONIC_TRIGGER 7
+#define SONIC_ECHO 8
 
 //
 
@@ -60,7 +64,7 @@ void thrInterrupt() {
 void printPulseData(const uint8_t chnIndex, uint16_t pulseWidth, uint8_t ledValue) {
 #ifdef DEBUG
   Serial.print("Channel ");
-  Serial.print(chnIndex)
+  Serial.print(chnIndex);
   Serial.print(": ");
   Serial.print(pulseWidth);
   Serial.print("us pulse width, led output ");
@@ -72,6 +76,29 @@ uint8_t pulseWidthToLedValue(uint16_t pulseWidth) {
   return pulseWidth > 0 ? (pulseWidth - 1000) / 4 : 0;
 }
 
+//
+
+volatile uint32_t sonicStart = 0;
+volatile uint32_t sonicStop = 0;
+volatile uint32_t sonicWidth = 0;
+
+void sonicInterrupt() {
+  uint32_t now = micros();
+
+  uint8_t echoPin = digitalRead(SONIC_ECHO);
+  if (echoPin == 1) {
+    sonicStart = now;
+    sonicWidth = 0;
+  } else {
+    sonicStop = now;
+    if (sonicStart != 0) {
+      sonicWidth = sonicStop - sonicStart;
+    }
+  }
+}
+
+//
+
 void setup() {
 #ifdef DEBUG
   Serial.begin(9600);
@@ -80,22 +107,34 @@ void setup() {
 
   pinMode(LED_BUILTIN, OUTPUT);
 
+  //
+
   for (uint8_t chnIndex = 0; chnIndex < CHN_COUNT; chnIndex++) {
     pinMode(chnInputPins[chnIndex], INPUT);
     pinMode(chnOutputLeds[chnIndex], OUTPUT);
   }
   
-  attachInterrupt(digitalPinToInterrupt(chnInputPins[CHN_STR]), strInterrupt, CHANGE);
-  attachInterrupt(digitalPinToInterrupt(chnInputPins[CHN_THR]), thrInterrupt, CHANGE);
+  //attachInterrupt(digitalPinToInterrupt(chnInputPins[CHN_STR]), strInterrupt, CHANGE);
+  //attachInterrupt(digitalPinToInterrupt(chnInputPins[CHN_THR]), thrInterrupt, CHANGE);
+  enableInterrupt(chnInputPins[CHN_STR], strInterrupt, CHANGE);
+  enableInterrupt(chnInputPins[CHN_THR], thrInterrupt, CHANGE);
+
+  //
+
+  pinMode(SONIC_TRIGGER, OUTPUT);
+  pinMode(SONIC_ECHO, INPUT);
+
+  enableInterrupt(SONIC_ECHO, sonicInterrupt, CHANGE);
 
 #ifdef DEBUG
   Serial.println("Interrupts set, ready to roll");
 #endif
 }
 
-uint8_t intLedState = 0;
+//uint8_t intLedState = 0;
 
 void loop() {
+  // RC channel monitor outputs
   for (uint8_t chnIndex = 0; chnIndex < CHN_COUNT; chnIndex++) {
     uint8_t ledValue = pulseWidthToLedValue(chnLastPulseWidth[chnIndex]);
 
@@ -103,10 +142,24 @@ void loop() {
     printPulseData(chnIndex, chnLastPulseWidth[chnIndex], ledValue);
   }
 
-  digitalWrite(LED_BUILTIN, intLedState++ & 0x10 ? 1 : 0); // slow down the blink
+  // Sonic sensor probe
+  digitalWrite(SONIC_TRIGGER, 1);
+  delayMicroseconds(10);
+  digitalWrite(SONIC_TRIGGER, 0);
+
+  if (sonicWidth != 0) {
+    uint32_t sonicDistance = sonicWidth * 340 / 2000;
+    Serial.print("Sonic pulse width ");
+    Serial.print(sonicWidth);
+    Serial.print("us ");
+    Serial.print(sonicDistance);
+    Serial.println("mm");
+  }
+
+  //digitalWrite(LED_BUILTIN, intLedState++ & 0x10 ? 1 : 0); // slow down the blink
 
 #ifdef DEBUG
-  delay(100);
+  delay(1000);
 #else
   delay(10);
 #endif
