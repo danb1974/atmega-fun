@@ -1,7 +1,7 @@
 #include <Arduino.h>
 #include<EnableInterrupt.h>
 
-#define DEBUG
+//#define DEBUG
 
 // channel count and indexes (order does not actually matter but keep same as on receiver)
 #define CHN_COUNT 2
@@ -78,21 +78,21 @@ uint8_t pulseWidthToLedValue(uint16_t pulseWidth) {
 
 //
 
-volatile uint32_t sonicStart = 0;
-volatile uint32_t sonicStop = 0;
-volatile uint32_t sonicWidth = 0;
+volatile uint32_t sonicEchoStart = 0;
+volatile uint32_t sonicEchoStop = 0;
+volatile uint32_t sonicPulseWidth = 0;
 
 void sonicInterrupt() {
   uint32_t now = micros();
 
   uint8_t echoPin = digitalRead(SONIC_ECHO);
   if (echoPin == 1) {
-    sonicStart = now;
-    sonicWidth = 0;
+    sonicEchoStart = now;
+    //sonicWidth = 0;
   } else {
-    sonicStop = now;
-    if (sonicStart != 0) {
-      sonicWidth = sonicStop - sonicStart;
+    sonicEchoStop = now;
+    if (sonicEchoStart != 0) {
+      sonicPulseWidth = sonicEchoStop - sonicEchoStart;
     }
   }
 }
@@ -131,8 +131,6 @@ void setup() {
 #endif
 }
 
-//uint8_t intLedState = 0;
-
 void loop() {
   // RC channel monitor outputs
   for (uint8_t chnIndex = 0; chnIndex < CHN_COUNT; chnIndex++) {
@@ -147,16 +145,22 @@ void loop() {
   delayMicroseconds(10);
   digitalWrite(SONIC_TRIGGER, 0);
 
-  if (sonicWidth != 0) {
-    uint32_t sonicDistance = sonicWidth * 340 / 2000;
+  // Sonic sensor monitor output
+  uint8_t proximityAlert = 0;
+  if (sonicPulseWidth != 0) {
+    uint32_t sonicDistance = sonicPulseWidth * 340 / 2000;
+#ifdef DEBUG
     Serial.print("Sonic pulse width ");
     Serial.print(sonicWidth);
     Serial.print("us ");
     Serial.print(sonicDistance);
     Serial.println("mm");
+#endif
+    if (sonicDistance < 100) {
+      proximityAlert = 1;
+    }
   }
-
-  //digitalWrite(LED_BUILTIN, intLedState++ & 0x10 ? 1 : 0); // slow down the blink
+  digitalWrite(LED_BUILTIN, proximityAlert);
 
 #ifdef DEBUG
   delay(1000);
