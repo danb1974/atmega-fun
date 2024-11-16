@@ -1,5 +1,5 @@
 #include <Arduino.h>
-#include<EnableInterrupt.h>
+#include <EnableInterrupt.h>
 
 //#define DEBUG
 
@@ -19,9 +19,6 @@ uint8_t chnOutputLeds[CHN_COUNT] = {
   10, // steering led
   11  // throttle led
 };
-
-#define SONIC_TRIGGER 7
-#define SONIC_ECHO 8
 
 //
 
@@ -78,27 +75,6 @@ uint8_t pulseWidthToLedValue(uint16_t pulseWidth) {
 
 //
 
-volatile uint32_t sonicEchoStart = 0;
-volatile uint32_t sonicEchoStop = 0;
-volatile uint32_t sonicPulseWidth = 0;
-
-void sonicInterrupt() {
-  uint32_t now = micros();
-
-  uint8_t echoPin = digitalRead(SONIC_ECHO);
-  if (echoPin == 1) {
-    sonicEchoStart = now;
-    //sonicWidth = 0;
-  } else {
-    sonicEchoStop = now;
-    if (sonicEchoStart != 0) {
-      sonicPulseWidth = sonicEchoStop - sonicEchoStart;
-    }
-  }
-}
-
-//
-
 void setup() {
 #ifdef DEBUG
   Serial.begin(9600);
@@ -119,13 +95,6 @@ void setup() {
   enableInterrupt(chnInputPins[CHN_STR], strInterrupt, CHANGE);
   enableInterrupt(chnInputPins[CHN_THR], thrInterrupt, CHANGE);
 
-  //
-
-  pinMode(SONIC_TRIGGER, OUTPUT);
-  pinMode(SONIC_ECHO, INPUT);
-
-  enableInterrupt(SONIC_ECHO, sonicInterrupt, CHANGE);
-
 #ifdef DEBUG
   Serial.println("Interrupts set, ready to roll");
 #endif
@@ -139,28 +108,6 @@ void loop() {
     analogWrite(chnOutputLeds[chnIndex], ledValue);
     printPulseData(chnIndex, chnLastPulseWidth[chnIndex], ledValue);
   }
-
-  // Sonic sensor probe
-  digitalWrite(SONIC_TRIGGER, 1);
-  delayMicroseconds(10);
-  digitalWrite(SONIC_TRIGGER, 0);
-
-  // Sonic sensor monitor output
-  uint8_t proximityAlert = 0;
-  if (sonicPulseWidth != 0) {
-    uint32_t sonicDistance = sonicPulseWidth * 340 / 2000;
-#ifdef DEBUG
-    Serial.print("Sonic pulse width ");
-    Serial.print(sonicWidth);
-    Serial.print("us ");
-    Serial.print(sonicDistance);
-    Serial.println("mm");
-#endif
-    if (sonicDistance < 100) {
-      proximityAlert = 1;
-    }
-  }
-  digitalWrite(LED_BUILTIN, proximityAlert);
 
 #ifdef DEBUG
   delay(1000);
