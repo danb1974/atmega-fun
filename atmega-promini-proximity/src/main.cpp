@@ -36,8 +36,8 @@ void sonicInterrupt() {
 
 //
 
-uint8_t servoAngle = 180;
-uint32_t sonicDistance = 255;
+static uint8_t servoAngle = 180;
+static uint32_t sonicDistance = 255;
 
 void setup() {
 #ifdef DEBUG
@@ -83,7 +83,14 @@ void setup() {
 #endif
 }
 
+#define SONIC_PULSE_BUFFER_SIZE 16
+static uint8_t sonicPulsePos = 0;
+static uint32_t sonicPulseBuffer[SONIC_PULSE_BUFFER_SIZE];
+static uint8_t loopCounter = 0;
+
 void loop() {
+  loopCounter++;
+
   // Sonic sensor probe
   digitalWrite(SONIC_TRIGGER, 1);
   delayMicroseconds(10);
@@ -91,29 +98,32 @@ void loop() {
 
   // Sonic sensor monitor output
   if (sonicPulseWidth != 0) {
-    uint32_t newSonicDistance = sonicPulseWidth * 340 / 2000;
+    uint32_t curSonicDistance = sonicPulseWidth * 340 / 2000;
+    sonicPulseBuffer[sonicPulsePos] = curSonicDistance;
+    sonicPulsePos = (sonicPulsePos + 1) % SONIC_PULSE_BUFFER_SIZE;
+
+    uint32_t curAvgSonicDistance = 0;
+    for (uint8_t i = 0; i < SONIC_PULSE_BUFFER_SIZE; i++) {
+      curAvgSonicDistance += sonicPulseBuffer[i];
+    }
+    curAvgSonicDistance /= SONIC_PULSE_BUFFER_SIZE;
 #ifdef DEBUG
-    Serial.print("Sonic pulse width ");
-    Serial.print(sonicWidth);
+    Serial.print("Sonic pulse ");
+    Serial.print(sonicPulseWidth);
     Serial.print("us ");
-    Serial.print(sonicDistance);
+    Serial.print(curSonicDistance);
+    Serial.print("mm avg ");
+    Serial.print(curAvgSonicDistance);
     Serial.println("mm");
 #endif
-    if (newSonicDistance > sonicDistance) {
-      sonicDistance += (newSonicDistance - sonicDistance) / 4;
-    } else if (newSonicDistance < sonicDistance) {
-      sonicDistance -= (sonicDistance - newSonicDistance) / 4;
-    }
+    sonicDistance = curAvgSonicDistance;
 
-    uint32_t newServoAngle = sonicDistance / 2;
+    uint32_t newServoAngle = sonicDistance / 1;
     if (newServoAngle > 180) {
       newServoAngle = 180;
     }
-    if (newServoAngle > servoAngle) {
-      servoAngle++;
-    } else if (newServoAngle < servoAngle) {
-      servoAngle--;
-    }
+    servoAngle = newServoAngle;
+
   } else {
     digitalWrite(LED_BUILTIN, 1);
     delay(50);
@@ -121,17 +131,17 @@ void loop() {
   }
 
   uint8_t proximityAlert = 0;
-  if (sonicDistance < 100) {
+  if (sonicDistance < 40) {
     proximityAlert = 1;
   }
 
   servo.write(servoAngle);
-  digitalWrite(LED_1, proximityAlert);
+  digitalWrite(LED_1, (loopCounter % 64) > 32 ? proximityAlert : 0);
   analogWrite(LED_2, sonicDistance <= 255 ? sonicDistance : 255);
 
 #ifdef DEBUG
-  delay(1000);
-#else
   delay(10);
+#else
+  delay(5);
 #endif
 }
