@@ -115,12 +115,14 @@ void processAux2P(bool blinkState) {
 void loop() {
   static uint8_t pulse = 0;
   static uint8_t blinkState = 0;
+  static uint8_t blinkPattern[] = {1, 1, 1, 0, 0, 0, 0, 0, 0, 0};
 
   processThr();
+
+  blinkState = blinkPattern[pulse % sizeof(blinkPattern)];
   processAux2P(blinkState);
 
   pulse++;
-  blinkState = (pulse / 5) & 0x01;
 
   delay(100);
 }
