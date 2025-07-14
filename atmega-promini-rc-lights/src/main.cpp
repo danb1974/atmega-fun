@@ -27,23 +27,25 @@ uint8_t chnOutputLeds[CHN_COUNT] = {
 
 //
 
-static volatile uint32_t chnLastPulseStart[CHN_COUNT];
+static volatile uint32_t _chnLastPulseStart[CHN_COUNT];
+static volatile uint32_t _chnLastPulseEnd[CHN_COUNT];
 static volatile uint32_t chnLastPulseWidth[CHN_COUNT];
 
 void handleChnEvent(uint32_t now, uint8_t chnIndex, uint8_t chnState) {
   if (chnState == 1) {
     // up transition, record start
-    chnLastPulseStart[chnIndex] = now;
+    _chnLastPulseStart[chnIndex] = now;
     return;
   }
   
-  if (chnLastPulseStart[chnIndex] == 0) {
+  if (_chnLastPulseStart[chnIndex] == 0) {
     // no up transition yet
     return;
   }
 
   // down transition, compute width
-  uint16_t pulseWidth = now - chnLastPulseStart[chnIndex];
+  _chnLastPulseEnd[chnIndex] = now;
+  uint16_t pulseWidth = _chnLastPulseEnd[chnIndex] - _chnLastPulseStart[chnIndex];
   if (pulseWidth < 1000 || pulseWidth > 2000) {
     // invalid
     pulseWidth = 0;
@@ -79,14 +81,71 @@ void setup() {
   digitalWrite(LED_BUILTIN, 1);
 }
 
+enum THR_STATES {
+  ACCEL,
+  NEUTRAL,
+  BRAKE
+};
+
+// Brake light rules
+// - brake from neutral && neutral short : ON
+// - any to neutral : ON
+// - any to accel: OFF
+// - in accell (optional)
+//   - if higher: OFF
+//   - if lower: ON
+
 void processThr() {
+  static THR_STATES lastThrState = NEUTRAL;
+  static uint32_t lastThrStateTs = micros();
+  static uint32_t lastThrPulseWidth = 0;
+  static bool brakeLight = true;
+
+  uint32_t now = micros();
   uint32_t pulseWidth = chnLastPulseWidth[CHN_THR];
-  if (pulseWidth >= 1450 && pulseWidth <= 1550) {
-    // brake on if no command
+
+  THR_STATES thrState = NEUTRAL;
+  if (pulseWidth <= 1450) {
+    thrState = BRAKE;
+  } else if (pulseWidth >= 1550) {
+    thrState = ACCEL;
+  }
+
+  if (thrState != lastThrState) {
+    // handle transitions
+
+    if (thrState == ACCEL) {
+      // TODO accel logic
+      brakeLight = false;
+    } else if (thrState == NEUTRAL) {
+      brakeLight = true;
+    } else if (thrState == BRAKE) {
+      if (lastThrState == NEUTRAL && now - lastThrStateTs < 50000U) { // micros
+        brakeLight = true;
+      } else if (lastThrState == ACCEL) {
+        brakeLight = true;
+      } else {
+        brakeLight = false;
+      }
+    }
+
+    lastThrState = thrState;
+    lastThrStateTs = now; //_chnLastPulseStart[CHN_THR];
+  }
+
+  if (pulseWidth != lastThrPulseWidth) {
+    // TODO handle variations
+    if (thrState == ACCEL) {
+
+    }
+
+    lastThrPulseWidth = pulseWidth;
+  }
+
+  if (brakeLight) {
     analogWrite(chnOutputLeds[CHN_THR], 255);
   } else {
-    // brake off (normal tai lights) if command
-    analogWrite(chnOutputLeds[CHN_THR], 15);
+    analogWrite(chnOutputLeds[CHN_THR], 31);
   }
 }
 
@@ -113,16 +172,17 @@ void processAux2P(bool blinkState) {
 }
 
 void loop() {
-  static uint8_t pulse = 0;
   static uint8_t blinkState = 0;
   static uint8_t blinkPattern[] = {1, 1, 1, 0, 0, 0, 0, 0, 0, 0};
+
+  uint32_t now = millis();
+  uint32_t pulse = now / 100;
 
   processThr();
 
   blinkState = blinkPattern[pulse % sizeof(blinkPattern)];
   processAux2P(blinkState);
 
-  pulse++;
-
-  delay(100);
+  // TODO
+  delay(3);
 }
