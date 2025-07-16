@@ -143,7 +143,7 @@ void processThr() {
   }
 
   if (thrState != lastThrState) {
-    lastThrStateTs = now; //_chnLastPulseStart[CHN_THR];
+    lastThrStateTs = now;
     lastThrState = thrState;
   }
 
@@ -152,11 +152,9 @@ void processThr() {
     lastThrPulseWidth = pulseWidth;
   }
 
-  if (brakeLight) {
-    analogWrite(chnOutputLeds[CHN_THR], 255);
-  } else {
-    analogWrite(chnOutputLeds[CHN_THR], 31);
-  }
+  // serves as both position and brake
+  uint8_t brakeLightValue = brakeLight ? 255 : 31;
+  analogWrite(chnOutputLeds[CHN_THR], brakeLightValue);
 }
 
 void processAux3P(bool blinkState) {
