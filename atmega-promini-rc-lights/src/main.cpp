@@ -99,6 +99,7 @@ void processThr() {
   static THR_STATES lastThrState = NEUTRAL;
   static uint32_t lastThrStateTs = micros();
   static uint32_t lastThrPulseWidth = 0;
+  static uint32_t lastThrPulseWidthTs = micros();
   static bool brakeLight = true;
 
   uint32_t now = micros();
@@ -115,7 +116,7 @@ void processThr() {
     // handle transitions
 
     if (thrState == ACCEL) {
-      // TODO accel logic
+      // transition to accel; accel variation will be handled later
       brakeLight = false;
     } else if (thrState == NEUTRAL) {
       brakeLight = true;
@@ -128,17 +129,26 @@ void processThr() {
         brakeLight = false;
       }
     }
-
-    lastThrState = thrState;
-    lastThrStateTs = now; //_chnLastPulseStart[CHN_THR];
   }
 
   if (pulseWidth != lastThrPulseWidth) {
-    // TODO handle variations
-    if (thrState == ACCEL) {
-
+    // brake on accell going down
+    if (thrState == ACCEL && lastThrState == ACCEL) {
+      if (pulseWidth < lastThrPulseWidth - 10) {
+        brakeLight = true;
+      } else {
+        brakeLight = false;
+      }
     }
+  }
 
+  if (thrState != lastThrState) {
+    lastThrStateTs = now; //_chnLastPulseStart[CHN_THR];
+    lastThrState = thrState;
+  }
+
+  if (pulseWidth != lastThrPulseWidth) {
+    lastThrPulseWidthTs = now;
     lastThrPulseWidth = pulseWidth;
   }
 
@@ -176,7 +186,7 @@ void loop() {
   static uint8_t blinkPattern[] = {1, 1, 1, 0, 0, 0, 0, 0, 0, 0};
 
   uint32_t now = millis();
-  uint32_t pulse = now / 100;
+  uint32_t pulse = now / 80;
 
   processThr();
 
