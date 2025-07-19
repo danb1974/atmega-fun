@@ -46,11 +46,17 @@ void handleChnEvent(uint32_t now, uint8_t chnIndex, uint8_t chnState) {
   // down transition, compute width
   _chnLastPulseEnd[chnIndex] = now;
   uint16_t pulseWidth = _chnLastPulseEnd[chnIndex] - _chnLastPulseStart[chnIndex];
-  if (pulseWidth < 1000 || pulseWidth > 2000) {
+  if (pulseWidth < 1000U || pulseWidth > 2000U) {
     // invalid
     pulseWidth = 0;
   }
   chnLastPulseWidth[chnIndex] = pulseWidth;
+}
+
+void checkChnSignalLoss(uint32_t now, uint8_t chnIndex) {
+  if (now - _chnLastPulseStart[chnIndex] > 1000000U) {
+    chnLastPulseWidth[chnIndex] = 0;
+  }
 }
 
 void auxInterrupt() {
@@ -113,9 +119,9 @@ void processThr(bool blinkState) {
   }
 
   THR_STATES thrState = NEUTRAL;
-  if (pulseWidth <= 1450) {
+  if (pulseWidth <= 1450U) {
     thrState = BRAKE;
-  } else if (pulseWidth >= 1550) {
+  } else if (pulseWidth >= 1550U) {
     thrState = ACCEL;
   }
 
@@ -151,7 +157,7 @@ void processThr(bool blinkState) {
   if (pulseWidth != lastThrPulseWidth) {
     // brake on accell going down
     if (thrState == ACCEL && lastThrState == ACCEL) {
-      if (pulseWidth < lastThrPulseWidth - 10) {
+      if (pulseWidth < lastThrPulseWidth - 10U) {
         brakeLight = true;
       } else {
         brakeLight = false;
@@ -176,9 +182,9 @@ void processThr(bool blinkState) {
 
 void processAux3P(bool blinkState) {
   uint32_t pulseWidth = chnLastPulseWidth[CHN_AUX];
-  if (pulseWidth > 1750) {
+  if (pulseWidth > 1750U) {
     digitalWrite(chnOutputLeds[CHN_AUX], 1);
-  } else if (pulseWidth < 1250) {
+  } else if (pulseWidth < 1250U) {
     digitalWrite(chnOutputLeds[CHN_AUX], blinkState);
   } else {
     digitalWrite(chnOutputLeds[CHN_AUX], 0);
@@ -194,9 +200,9 @@ void processAux2P(bool blinkState) {
     return;
   }
 
-  if (pulseWidth > 1750) {
+  if (pulseWidth > 1750U) {
     digitalWrite(chnOutputLeds[CHN_AUX], blinkState);
-  } else if (pulseWidth < 1250) {
+  } else if (pulseWidth < 1250U) {
     digitalWrite(chnOutputLeds[CHN_AUX], 0);
   } else {
     digitalWrite(chnOutputLeds[CHN_AUX], 0);
@@ -207,10 +213,13 @@ void loop() {
   static uint8_t blinkState = 0;
   static uint8_t blinkPattern[] = {1, 1, 1, 0, 0, 0, 0, 0, 0, 0};
 
-  uint32_t now = millis();
-  uint32_t pulse = now / 80;
+  uint32_t now = micros();
+  uint32_t pulse = now / 80000U;
 
   blinkState = blinkPattern[pulse % sizeof(blinkPattern)];
+
+  //checkChnSignalLoss(now, CHN_THR);
+  //checkChnSignalLoss(now, CHN_AUX);
 
   processThr(blinkState);
   processAux2P(blinkState);
