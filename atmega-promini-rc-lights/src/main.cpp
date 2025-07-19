@@ -27,9 +27,9 @@ uint8_t chnOutputLeds[CHN_COUNT] = {
 
 //
 
-static volatile uint32_t _chnLastPulseStart[CHN_COUNT];
+static volatile uint32_t _chnLastPulseStart[CHN_COUNT] = {};
 static volatile uint32_t _chnLastPulseEnd[CHN_COUNT];
-static volatile uint32_t chnLastPulseWidth[CHN_COUNT];
+static volatile uint32_t chnLastPulseWidth[CHN_COUNT] = {};
 
 void handleChnEvent(uint32_t now, uint8_t chnIndex, uint8_t chnState) {
   if (chnState == 1) {
@@ -95,21 +95,38 @@ enum THR_STATES {
 //   - if higher: OFF
 //   - if lower: ON
 
-void processThr() {
+void processThr(bool blinkState) {
   static THR_STATES lastThrState = NEUTRAL;
   static uint32_t lastThrStateTs = micros();
   static uint32_t lastThrPulseWidth = 0;
   static uint32_t lastThrPulseWidthTs = micros();
   static bool brakeLight = true;
+  static bool throttleMoved = false;
 
   uint32_t now = micros();
   uint32_t pulseWidth = chnLastPulseWidth[CHN_THR];
+
+  if (pulseWidth == 0) {
+    // no signal
+    digitalWrite(chnOutputLeds[CHN_THR], blinkState);
+    return;
+  }
 
   THR_STATES thrState = NEUTRAL;
   if (pulseWidth <= 1450) {
     thrState = BRAKE;
   } else if (pulseWidth >= 1550) {
     thrState = ACCEL;
+  }
+
+  if (thrState != NEUTRAL && !throttleMoved) {
+    throttleMoved = true;
+  }
+
+  if (!throttleMoved) {
+    // blink untill throttle moved
+    digitalWrite(chnOutputLeds[CHN_THR], blinkState);
+    return;
   }
 
   if (thrState != lastThrState) {
@@ -170,6 +187,13 @@ void processAux3P(bool blinkState) {
 
 void processAux2P(bool blinkState) {
   uint32_t pulseWidth = chnLastPulseWidth[CHN_AUX];
+
+  if (pulseWidth == 0) {
+    // no signal
+    digitalWrite(chnOutputLeds[CHN_AUX], blinkState);
+    return;
+  }
+
   if (pulseWidth > 1750) {
     digitalWrite(chnOutputLeds[CHN_AUX], blinkState);
   } else if (pulseWidth < 1250) {
@@ -186,9 +210,9 @@ void loop() {
   uint32_t now = millis();
   uint32_t pulse = now / 80;
 
-  processThr();
-
   blinkState = blinkPattern[pulse % sizeof(blinkPattern)];
+
+  processThr(blinkState);
   processAux2P(blinkState);
 
   // TODO
