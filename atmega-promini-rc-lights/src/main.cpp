@@ -57,6 +57,12 @@ void checkChnSignalLoss(uint32_t now, uint8_t chnIndex) {
   if (now - _chnLastPulseStart[chnIndex] > 1000000U) {
     chnLastPulseWidth[chnIndex] = 0;
   }
+
+  if (chnLastPulseWidth[chnIndex] == 0) {
+    digitalWrite(LED_BUILTIN, 0);
+  } else {
+    digitalWrite(LED_BUILTIN, 1);
+  }
 }
 
 void auxInterrupt() {
