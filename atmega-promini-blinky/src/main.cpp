@@ -1,7 +1,10 @@
 #include <Arduino.h>
 
 #define PIN_LED LED_BUILTIN
-#define BLINK_PERIOD 100    // ms between state changes
+
+// ms between state changes
+// if clock is correct, should change state each second
+#define BLINK_PERIOD 1000
 
 //
 
