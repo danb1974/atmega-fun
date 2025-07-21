@@ -107,7 +107,7 @@ enum THR_STATES {
 //   - if higher: OFF
 //   - if lower: ON
 
-void processThr(bool blinkState) {
+void processThr(bool blinkPulse, bool errorPulse) {
   static THR_STATES lastThrState = NEUTRAL;
   static uint32_t lastThrStateTs = micros();
   static uint32_t lastThrPulseWidth = 0;
@@ -120,7 +120,7 @@ void processThr(bool blinkState) {
 
   if (pulseWidth == 0) {
     // no signal
-    digitalWrite(chnOutputLeds[CHN_THR], blinkState);
+    digitalWrite(chnOutputLeds[CHN_THR], errorPulse);
     return;
   }
 
@@ -137,7 +137,7 @@ void processThr(bool blinkState) {
 
   if (!throttleMoved) {
     // blink untill throttle moved
-    digitalWrite(chnOutputLeds[CHN_THR], blinkState);
+    digitalWrite(chnOutputLeds[CHN_THR], blinkPulse);
     return;
   }
 
@@ -186,28 +186,17 @@ void processThr(bool blinkState) {
   analogWrite(chnOutputLeds[CHN_THR], brakeLightValue);
 }
 
-void processAux3P(bool blinkState) {
-  uint32_t pulseWidth = chnLastPulseWidth[CHN_AUX];
-  if (pulseWidth > 1750U) {
-    digitalWrite(chnOutputLeds[CHN_AUX], 1);
-  } else if (pulseWidth < 1250U) {
-    digitalWrite(chnOutputLeds[CHN_AUX], blinkState);
-  } else {
-    digitalWrite(chnOutputLeds[CHN_AUX], 0);
-  }
-}
-
-void processAux2P(bool blinkState) {
+void processAux2P(bool blinkPulse, bool errorPulse) {
   uint32_t pulseWidth = chnLastPulseWidth[CHN_AUX];
 
   if (pulseWidth == 0) {
     // no signal
-    digitalWrite(chnOutputLeds[CHN_AUX], blinkState);
+    digitalWrite(chnOutputLeds[CHN_AUX], errorPulse);
     return;
   }
 
   if (pulseWidth > 1750U) {
-    digitalWrite(chnOutputLeds[CHN_AUX], blinkState);
+    digitalWrite(chnOutputLeds[CHN_AUX], blinkPulse);
   } else if (pulseWidth < 1250U) {
     digitalWrite(chnOutputLeds[CHN_AUX], 0);
   } else {
@@ -216,19 +205,22 @@ void processAux2P(bool blinkState) {
 }
 
 void loop() {
-  static uint8_t blinkState = 0;
-  static uint8_t blinkPattern[] = {1, 1, 1, 0, 0, 0, 0, 0, 0, 0};
+  static uint8_t blinkPulse = 0;
+  static uint8_t errorPulse = 0;
+  static bool blinkPattern[] = {1, 1, 1, 0, 0, 0, 0, 0, 0, 0};
+  static bool errorPattern[] = {0, 1};
 
   uint32_t now = micros();
   uint32_t pulse = now / 80000U;
 
-  blinkState = blinkPattern[pulse % sizeof(blinkPattern)];
+  blinkPulse = blinkPattern[pulse % sizeof(blinkPattern)];
+  errorPulse = errorPattern[pulse % sizeof(errorPattern)];
 
   //checkChnSignalLoss(now, CHN_THR);
   //checkChnSignalLoss(now, CHN_AUX);
 
-  processThr(blinkState);
-  processAux2P(blinkState);
+  processThr(blinkPulse, errorPulse);
+  processAux2P(blinkPulse, errorPulse);
 
   // TODO
   delay(3);
