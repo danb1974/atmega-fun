@@ -5,13 +5,28 @@
 #define CHN_THR 0
 #define CHN_AUX 1
 
-// input pins from RX
+// input pins from RX (INT capable)
 #define PIN_THR 2
 #define PIN_AUX 3
 
-// output pins to lights
+// output pins to lights (pwm capable)
 #define PIN_BRAKE 10
 #define PIN_HAZARD 11
+
+// rc pulse width range (us)
+#define MIN_VALID_PULSE 1000U
+#define MAX_VALID_PULSE 2000U
+
+// aux switch thresholds (us)
+#define AUX_CHN_LOW_THRES 1250U
+#define AUX_CHN_HIGH_THRES 1750U
+
+// brightness values for brake leds
+#define POSITION_LIGHT 31U 
+#define BRAKE_LIGHT 255U
+
+// when easying off throttle, what decrease should trigger brake
+#define THR_BRAKE_TRIGGER_OFFSET 20U
 
 // inputs from RC receiver (must be INT - not PCINT - capable pins)
 uint8_t chnInputPins[CHN_COUNT] = {
@@ -46,14 +61,28 @@ void handleChnEvent(uint32_t now, uint8_t chnIndex, uint8_t chnState) {
   // down transition, compute width
   _chnLastPulseEnd[chnIndex] = now;
   uint16_t pulseWidth = _chnLastPulseEnd[chnIndex] - _chnLastPulseStart[chnIndex];
-  if (pulseWidth < 1000U || pulseWidth > 2000U) {
-    // invalid
+
+  // range validation
+  if (pulseWidth < MIN_VALID_PULSE - 50U || pulseWidth > MAX_VALID_PULSE + 50U) {
+    // totally invalid
     pulseWidth = 0;
+  } else {
+    // a bit out, correct
+    if (pulseWidth < MIN_VALID_PULSE) {
+      // a bit low
+      pulseWidth = MIN_VALID_PULSE;
+    }
+    if (pulseWidth > MAX_VALID_PULSE) {
+      // a bit high
+      pulseWidth = MAX_VALID_PULSE;
+    }
   }
+
   chnLastPulseWidth[chnIndex] = pulseWidth;
 }
 
 void checkChnSignalLoss(uint32_t now, uint8_t chnIndex) {
+  // frame rate depends on DSM version (for example 50Hz = 20ms = 20000us)
   if (now - _chnLastPulseStart[chnIndex] > 1000000U) {
     chnLastPulseWidth[chnIndex] = 0;
   }
@@ -141,14 +170,15 @@ void processThr(bool blinkPulse, bool errorPulse) {
     return;
   }
 
+  // state transition rules
   if (thrState != lastThrState) {
-    // handle transitions
-
     if (thrState == ACCEL) {
       // transition to accel; accel variation will be handled later
       brakeLight = false;
+
     } else if (thrState == NEUTRAL) {
       brakeLight = true;
+
     } else if (thrState == BRAKE) {
       if (lastThrState == NEUTRAL && now - lastThrStateTs < 50000U) { // micros
         brakeLight = true;
@@ -160,10 +190,11 @@ void processThr(bool blinkPulse, bool errorPulse) {
     }
   }
 
+  // pulse variation rules
   if (pulseWidth != lastThrPulseWidth) {
     // brake on accell going down
     if (thrState == ACCEL && lastThrState == ACCEL) {
-      if (pulseWidth < lastThrPulseWidth - 10U) {
+      if (pulseWidth < lastThrPulseWidth - THR_BRAKE_TRIGGER_OFFSET) {
         brakeLight = true;
       } else {
         brakeLight = false;
@@ -171,18 +202,18 @@ void processThr(bool blinkPulse, bool errorPulse) {
     }
   }
 
+  // after rules are evaluated, update state and pulse width
   if (thrState != lastThrState) {
     lastThrStateTs = now;
     lastThrState = thrState;
   }
-
   if (pulseWidth != lastThrPulseWidth) {
     lastThrPulseWidthTs = now;
     lastThrPulseWidth = pulseWidth;
   }
 
   // serves as both position and brake
-  uint8_t brakeLightValue = brakeLight ? 255 : 31;
+  uint8_t brakeLightValue = brakeLight ? BRAKE_LIGHT : POSITION_LIGHT;
   analogWrite(chnOutputLeds[CHN_THR], brakeLightValue);
 }
 
@@ -195,9 +226,9 @@ void processAux2P(bool blinkPulse, bool errorPulse) {
     return;
   }
 
-  if (pulseWidth > 1750U) {
+  if (pulseWidth > AUX_CHN_HIGH_THRES) {
     digitalWrite(chnOutputLeds[CHN_AUX], blinkPulse);
-  } else if (pulseWidth < 1250U) {
+  } else if (pulseWidth < AUX_CHN_LOW_THRES) {
     digitalWrite(chnOutputLeds[CHN_AUX], 0);
   } else {
     digitalWrite(chnOutputLeds[CHN_AUX], 0);
@@ -222,6 +253,6 @@ void loop() {
   processThr(blinkPulse, errorPulse);
   processAux2P(blinkPulse, errorPulse);
 
-  // TODO
+  // TODO figure out what delay we want (ms)
   delay(3);
 }
