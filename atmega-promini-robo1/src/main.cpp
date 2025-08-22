@@ -110,19 +110,44 @@ void loop() {
     digitalWrite(LED_BUILTIN, 0);
 
     delay(1000);
+
   } else {
     // good signal
     uint8_t motor1a = 0;
     uint8_t motor1b = 0;
     uint8_t motor2a = 0;
     uint8_t motor2b = 0;
-    if (chnLastPulseWidth[CHN_THR] > 1550) {
-      uint8_t percent = (chnLastPulseWidth[CHN_THR] - 1500) / 5;
-      motor1a = motor2a = percent * 2;
-    } else if (chnLastPulseWidth[CHN_THR] < 1450) {
-      uint8_t percent = (1500 - chnLastPulseWidth[CHN_THR]) / 5;
-      motor1b = motor2b = percent * 2;
+
+    int16_t thrPercent = 0;
+    if (chnLastPulseWidth[CHN_THR] > 1600 || chnLastPulseWidth[CHN_THR] < 1400) {
+      thrPercent = ((int16_t)(chnLastPulseWidth[CHN_THR]) - 1500) / 5;
     }
+
+    int16_t strPercent = 0;
+    if (chnLastPulseWidth[CHN_STR] > 1600 || chnLastPulseWidth[CHN_STR] < 1400) {
+      strPercent = ((int16_t)(chnLastPulseWidth[CHN_STR]) - 1500) / 5;
+    }
+
+    int16_t thr1Percent = thrPercent + strPercent;
+    if (thr1Percent > 100) thr1Percent = 100;
+    if (thr1Percent < -100) thr1Percent = -100;
+    
+    int16_t thr2Percent = thrPercent - strPercent;
+    if (thr2Percent > 100) thr2Percent = 100;
+    if (thr2Percent < -100) thr2Percent = -100;
+    
+    if (thr1Percent >= 0) {
+      motor1a = thr1Percent * 2;
+    } else {
+      motor1b = -thr1Percent * 2;
+    }
+
+    if (thr2Percent >= 0) {
+      motor2a = thr2Percent * 2;
+    } else {
+      motor2b = -thr2Percent * 2;
+    }
+
     analogWrite(PIN_MOTOR_1A, motor1a);
     analogWrite(PIN_MOTOR_1B, motor1b);
     analogWrite(PIN_MOTOR_2A, motor2a);
