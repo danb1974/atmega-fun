@@ -59,6 +59,22 @@ void thrInterrupt() {
   handleChnEvent(now, CHN_THR, state);
 }
 
+void testMotors()
+{
+  // motor test
+  analogWrite(PIN_MOTOR_1A, 127);
+  analogWrite(PIN_MOTOR_2A, 127);
+  delay(200);
+  analogWrite(PIN_MOTOR_1A, 0);
+  analogWrite(PIN_MOTOR_2A, 0);
+  delay(200);
+  analogWrite(PIN_MOTOR_1B, 127);
+  analogWrite(PIN_MOTOR_2B, 127);
+  delay(200);
+  analogWrite(PIN_MOTOR_1B, 0);
+  analogWrite(PIN_MOTOR_2B, 0);
+}
+
 void setup() {
   pinMode(LED_BUILTIN, OUTPUT);
   digitalWrite(LED_BUILTIN, 0);
@@ -80,19 +96,39 @@ void setup() {
   attachInterrupt(digitalPinToInterrupt(chnInputPins[CHN_THR]), thrInterrupt, CHANGE);
 
   //
+  testMotors();
   digitalWrite(LED_BUILTIN, 1);
 }
 
 void loop() {
-  #if 1
-  // motor test
-  analogWrite(PIN_MOTOR_1A, 127);
-  analogWrite(PIN_MOTOR_2A, 127);
-  delay(1000);
-  analogWrite(PIN_MOTOR_1A, 0);
-  analogWrite(PIN_MOTOR_2A, 0);
-  delay(1000);
-  #endif
+  if (chnLastPulseWidth[CHN_STR] == 0 || chnLastPulseWidth[CHN_THR] == 0) {
+    // no signal, stop
+    analogWrite(PIN_MOTOR_1A, 0);
+    analogWrite(PIN_MOTOR_1B, 0);
+    analogWrite(PIN_MOTOR_2A, 0);
+    analogWrite(PIN_MOTOR_2B, 0);
+    digitalWrite(LED_BUILTIN, 0);
 
-  //
+    delay(1000);
+  } else {
+    // good signal
+    uint8_t motor1a = 0;
+    uint8_t motor1b = 0;
+    uint8_t motor2a = 0;
+    uint8_t motor2b = 0;
+    if (chnLastPulseWidth[CHN_THR] > 1550) {
+      uint8_t percent = (chnLastPulseWidth[CHN_THR] - 1500) / 5;
+      motor1a = motor2a = percent * 2;
+    } else if (chnLastPulseWidth[CHN_THR] < 1450) {
+      uint8_t percent = (1500 - chnLastPulseWidth[CHN_THR]) / 5;
+      motor1b = motor2b = percent * 2;
+    }
+    analogWrite(PIN_MOTOR_1A, motor1a);
+    analogWrite(PIN_MOTOR_1B, motor1b);
+    analogWrite(PIN_MOTOR_2A, motor2a);
+    analogWrite(PIN_MOTOR_2B, motor2b);
+    
+    digitalWrite(LED_BUILTIN, 1);
+    delay(50);
+  }
 }
