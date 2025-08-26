@@ -62,15 +62,15 @@ void thrInterrupt() {
 void testMotors()
 {
   // motor test
-  analogWrite(PIN_MOTOR_1A, 127);
-  analogWrite(PIN_MOTOR_2A, 127);
-  delay(200);
+  analogWrite(PIN_MOTOR_1A, 31);
+  analogWrite(PIN_MOTOR_2A, 31);
+  delay(50);
   analogWrite(PIN_MOTOR_1A, 0);
   analogWrite(PIN_MOTOR_2A, 0);
-  delay(200);
-  analogWrite(PIN_MOTOR_1B, 127);
-  analogWrite(PIN_MOTOR_2B, 127);
-  delay(200);
+  delay(50);
+  analogWrite(PIN_MOTOR_1B, 31);
+  analogWrite(PIN_MOTOR_2B, 31);
+  delay(50);
   analogWrite(PIN_MOTOR_1B, 0);
   analogWrite(PIN_MOTOR_2B, 0);
 }
@@ -95,8 +95,8 @@ void setup() {
   attachInterrupt(digitalPinToInterrupt(chnInputPins[CHN_STR]), strInterrupt, CHANGE);
   attachInterrupt(digitalPinToInterrupt(chnInputPins[CHN_THR]), thrInterrupt, CHANGE);
 
-  //
   testMotors();
+
   digitalWrite(LED_BUILTIN, 1);
 }
 
@@ -107,6 +107,7 @@ void loop() {
     analogWrite(PIN_MOTOR_1B, 0);
     analogWrite(PIN_MOTOR_2A, 0);
     analogWrite(PIN_MOTOR_2B, 0);
+
     digitalWrite(LED_BUILTIN, 0);
 
     delay(1000);
@@ -128,23 +129,30 @@ void loop() {
       strPercent = ((int16_t)(chnLastPulseWidth[CHN_STR]) - 1500) / 5;
     }
 
-    int16_t thr1Percent = thrPercent + strPercent;
+    int16_t thr1Percent = 0;
+    int16_t thr2Percent = 0;
+    if (thrPercent > 0) { 
+      thr1Percent = thrPercent + strPercent;
+      thr2Percent = thrPercent - strPercent;
+    } else if (thrPercent < 0) {
+      thr1Percent = thrPercent - strPercent;
+      thr2Percent = thrPercent + strPercent;
+    }
+
     if (thr1Percent > 100) thr1Percent = 100;
     if (thr1Percent < -100) thr1Percent = -100;
-    
-    int16_t thr2Percent = thrPercent - strPercent;
     if (thr2Percent > 100) thr2Percent = 100;
     if (thr2Percent < -100) thr2Percent = -100;
     
-    if (thr1Percent >= 0) {
+    if (thr1Percent > 0) {
       motor1a = thr1Percent * 2;
-    } else {
+    } else if (thr1Percent < 0) {
       motor1b = -thr1Percent * 2;
     }
 
-    if (thr2Percent >= 0) {
+    if (thr2Percent > 0) {
       motor2a = thr2Percent * 2;
-    } else {
+    } else if (thr2Percent < 0) {
       motor2b = -thr2Percent * 2;
     }
 
@@ -154,6 +162,7 @@ void loop() {
     analogWrite(PIN_MOTOR_2B, motor2b);
     
     digitalWrite(LED_BUILTIN, 1);
+
     delay(50);
   }
 }
