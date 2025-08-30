@@ -101,7 +101,12 @@ void setup() {
 }
 
 void loop() {
-  if (chnLastPulseWidth[CHN_STR] == 0 || chnLastPulseWidth[CHN_THR] == 0) {
+  uint32_t now = micros();
+
+  if (chnLastPulseWidth[CHN_STR] == 0
+    || chnLastPulseWidth[CHN_THR] == 0
+    || now - chnLastPulseStart[CHN_STR] > 1000000
+    || now - chnLastPulseStart[CHN_THR] > 1000000) {
     // no signal, stop
     analogWrite(PIN_MOTOR_1A, 0);
     analogWrite(PIN_MOTOR_1B, 0);
@@ -131,10 +136,10 @@ void loop() {
 
     int16_t thr1Percent = 0;
     int16_t thr2Percent = 0;
-    if (thrPercent > 0) { 
+    if (thrPercent >= 0) { 
       thr1Percent = thrPercent + strPercent;
       thr2Percent = thrPercent - strPercent;
-    } else if (thrPercent < 0) {
+    } else {
       thr1Percent = thrPercent - strPercent;
       thr2Percent = thrPercent + strPercent;
     }
