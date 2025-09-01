@@ -6,57 +6,38 @@
 #define PIN_MOTOR_2A 5
 #define PIN_MOTOR_2B 6
 
-// RC channel count and indexes (order does not actually matter but keep same as on receiver)
-#define CHN_COUNT 2
-#define CHN_STR 0
-#define CHN_THR 1
+// RC channel pins
 #define PIN_STR 2
+#define INT_STR 0
 #define PIN_THR 3
+#define INT_THR 1
 
-// inputs from RC receiver (must be INT - not PCINT - capable pins)
-uint8_t chnInputPins[CHN_COUNT] = {
-  PIN_STR,  // steering channel on INT0 pin
-  PIN_THR,  // throttle channel on INT1 pin
-};
-
-volatile uint32_t chnLastPulseStart[CHN_COUNT];
-volatile uint32_t chnLastPulseWidth[CHN_COUNT];
-
-void handleChnEvent(uint32_t now, uint8_t chnIndex, uint8_t chnState) {
-  if (chnState == 1) {
-    // up transition, record start
-    chnLastPulseStart[chnIndex] = now;
-    return;
-  }
-  
-  if (chnLastPulseStart[chnIndex] == 0) {
-    // no up transition yet
-    return;
-  }
-
-  // down transition, compute width
-  uint16_t pulseWidth = now - chnLastPulseStart[chnIndex];
-  if (pulseWidth < 1000 - 100 || pulseWidth > 2000 + 100) {
-    // completely invalid
-    pulseWidth = 0;
-  } else {
-    // slightly off
-    if (pulseWidth < 1000) pulseWidth = 1000;
-    if (pulseWidth > 2000) pulseWidth = 2000;
-  }
-  chnLastPulseWidth[chnIndex] = pulseWidth;
-}
+// RC channel data
+volatile uint32_t strLastPulseStart;
+volatile uint32_t strLastPulseWidth;
+volatile uint32_t thrLastPulseStart;
+volatile uint32_t thrLastPulseWidth;
 
 void strInterrupt() {
   uint32_t now = micros();
-  uint8_t state = digitalRead(chnInputPins[CHN_STR]);
-  handleChnEvent(now, CHN_STR, state);
+  uint8_t state = digitalRead(PIN_STR);
+
+  if (state == 1) {
+    strLastPulseStart = now;
+  } else {
+    strLastPulseWidth = now - strLastPulseStart;
+  }
 }
 
 void thrInterrupt() {
   uint32_t now = micros();
-  uint8_t state = digitalRead(chnInputPins[CHN_THR]);
-  handleChnEvent(now, CHN_THR, state);
+  uint8_t state = digitalRead(PIN_THR);
+
+  if (state == 1) {
+    thrLastPulseStart = now;
+  } else {
+    thrLastPulseWidth = now - thrLastPulseStart;
+  }
 }
 
 void testMotors()
@@ -79,6 +60,9 @@ void setup() {
   pinMode(LED_BUILTIN, OUTPUT);
   digitalWrite(LED_BUILTIN, 0);
 
+  Serial.begin(115200);
+  Serial.println("Initializing");
+
   // make sure motors are stopped
   pinMode(PIN_MOTOR_1A, OUTPUT);
   pinMode(PIN_MOTOR_1B, OUTPUT);
@@ -89,24 +73,33 @@ void setup() {
   analogWrite(PIN_MOTOR_2A, 0);
   analogWrite(PIN_MOTOR_2B, 0);
 
-  for (uint8_t chnIndex = 0; chnIndex < CHN_COUNT; chnIndex++) {
-    pinMode(chnInputPins[chnIndex], INPUT);
-  }
-  attachInterrupt(digitalPinToInterrupt(chnInputPins[CHN_STR]), strInterrupt, CHANGE);
-  attachInterrupt(digitalPinToInterrupt(chnInputPins[CHN_THR]), thrInterrupt, CHANGE);
+  pinMode(PIN_STR, INPUT);
+  attachInterrupt(INT_STR, strInterrupt, CHANGE);
+
+  pinMode(PIN_THR, INPUT);
+  attachInterrupt(INT_THR, thrInterrupt, CHANGE);
 
   testMotors();
 
   digitalWrite(LED_BUILTIN, 1);
+  Serial.println("Running");
 }
 
 void loop() {
   uint32_t now = micros();
 
-  if (chnLastPulseWidth[CHN_STR] == 0
-    || chnLastPulseWidth[CHN_THR] == 0
-    || now - chnLastPulseStart[CHN_STR] > 1000000
-    || now - chnLastPulseStart[CHN_THR] > 1000000) {
+  #if 0
+  static char buffer[64];
+  snprintf(buffer, sizeof(buffer), "STR=%ld THR=%ld", strLastPulseWidth, thrLastPulseWidth);
+  Serial.println(buffer);
+  #endif
+
+  bool validStr = strLastPulseWidth >= 1000 && strLastPulseWidth <= 2000
+    && now - strLastPulseStart <= 1000000;
+  bool validThr = thrLastPulseWidth >= 1000 && thrLastPulseWidth <= 2000
+    && now - thrLastPulseStart <= 1000000;
+
+  if (!validStr || !validThr) {
     // no signal, stop
     analogWrite(PIN_MOTOR_1A, 0);
     analogWrite(PIN_MOTOR_1B, 0);
@@ -114,8 +107,6 @@ void loop() {
     analogWrite(PIN_MOTOR_2B, 0);
 
     digitalWrite(LED_BUILTIN, 0);
-
-    delay(1000);
 
   } else {
     // good signal
@@ -125,13 +116,13 @@ void loop() {
     uint8_t motor2b = 0;
 
     int16_t thrPercent = 0;
-    if (chnLastPulseWidth[CHN_THR] > 1600 || chnLastPulseWidth[CHN_THR] < 1400) {
-      thrPercent = ((int16_t)(chnLastPulseWidth[CHN_THR]) - 1500) / 5;
+    if (thrLastPulseWidth > 1600 || thrLastPulseWidth < 1400) {
+      thrPercent = ((int16_t)(thrLastPulseWidth) - 1500) / 5;
     }
 
     int16_t strPercent = 0;
-    if (chnLastPulseWidth[CHN_STR] > 1600 || chnLastPulseWidth[CHN_STR] < 1400) {
-      strPercent = ((int16_t)(chnLastPulseWidth[CHN_STR]) - 1500) / 5;
+    if (strLastPulseWidth > 1600 || strLastPulseWidth < 1400) {
+      strPercent = ((int16_t)(strLastPulseWidth) - 1500) / 5;
     }
 
     int16_t thr1Percent = 0;
@@ -167,7 +158,7 @@ void loop() {
     analogWrite(PIN_MOTOR_2B, motor2b);
     
     digitalWrite(LED_BUILTIN, 1);
-
-    delay(50);
   }
+
+  delay(100);
 }
