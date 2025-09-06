@@ -1,21 +1,27 @@
 #include <Arduino.h>
 
-// channel count and indexes (order does not actually matter but keep same as on receiver)
-#define CHN_COUNT 2
-#define CHN_THR 0
-#define CHN_AUX 1
 
-// input pins from RX (INT capable)
+// RC channel pins
 #define PIN_THR 2
+#define INT_THR 0
 #define PIN_AUX 3
+#define INT_AUX 1
 
 // output pins to lights (pwm capable)
 #define PIN_BRAKE 10
 #define PIN_HAZARD 11
 
+// RC channel data
+volatile uint32_t thrLastPulseStart = 0;
+volatile uint32_t thrLastPulseEnd = 0;
+volatile uint32_t thrLastPulseWidth = 0;
+volatile uint32_t auxLastPulseStart = 0;
+volatile uint32_t auxLastPulseEnd = 0;
+volatile uint32_t auxLastPulseWidth = 0;
+
 // rc pulse width range (us)
-#define MIN_VALID_PULSE 1000U
-#define MAX_VALID_PULSE 2000U
+#define MIN_VALID_PULSE 1000U - 100U
+#define MAX_VALID_PULSE 2000U + 100U
 
 // aux switch thresholds (us)
 #define AUX_CHN_LOW_THRES 1250U
@@ -28,97 +34,49 @@
 // when easying off throttle, what decrease should trigger brake
 #define THR_BRAKE_TRIGGER_OFFSET 20U
 
-// inputs from RC receiver (must be INT - not PCINT - capable pins)
-uint8_t chnInputPins[CHN_COUNT] = {
-  PIN_THR,  // throttle channel on INT0 pin
-  PIN_AUX,  // aux channel on INT1 pin
-};
-
-// leds for visualising input level (must be pwm-capable pins)
-uint8_t chnOutputLeds[CHN_COUNT] = {
-  PIN_BRAKE,  // brake lights
-  PIN_HAZARD, // hazard lights
-};
-
 //
 
-static volatile uint32_t _chnLastPulseStart[CHN_COUNT] = {};
-static volatile uint32_t _chnLastPulseEnd[CHN_COUNT];
-static volatile uint32_t chnLastPulseWidth[CHN_COUNT] = {};
+void thrInterrupt() {
+  uint32_t now = micros();
+  uint8_t state = digitalRead(PIN_THR);
 
-void handleChnEvent(uint32_t now, uint8_t chnIndex, uint8_t chnState) {
-  if (chnState == 1) {
-    // up transition, record start
-    _chnLastPulseStart[chnIndex] = now;
-    return;
-  }
-  
-  if (_chnLastPulseStart[chnIndex] == 0) {
-    // no up transition yet
+  if (state == 1) {
+    thrLastPulseStart = now;
     return;
   }
 
-  // down transition, compute width
-  _chnLastPulseEnd[chnIndex] = now;
-  uint16_t pulseWidth = _chnLastPulseEnd[chnIndex] - _chnLastPulseStart[chnIndex];
-
-  // range validation
-  if (pulseWidth < MIN_VALID_PULSE - 50U || pulseWidth > MAX_VALID_PULSE + 50U) {
-    // totally invalid
-    pulseWidth = 0;
-  } else {
-    // a bit out, correct
-    if (pulseWidth < MIN_VALID_PULSE) {
-      // a bit low
-      pulseWidth = MIN_VALID_PULSE;
-    }
-    if (pulseWidth > MAX_VALID_PULSE) {
-      // a bit high
-      pulseWidth = MAX_VALID_PULSE;
-    }
-  }
-
-  chnLastPulseWidth[chnIndex] = pulseWidth;
-}
-
-void checkChnSignalLoss(uint32_t now, uint8_t chnIndex) {
-  // frame rate depends on DSM version (for example 50Hz = 20ms = 20000us)
-  if (now - _chnLastPulseStart[chnIndex] > 1000000U) {
-    chnLastPulseWidth[chnIndex] = 0;
-  }
-
-  if (chnLastPulseWidth[chnIndex] == 0) {
-    digitalWrite(LED_BUILTIN, 0);
-  } else {
-    digitalWrite(LED_BUILTIN, 1);
-  }
+  thrLastPulseEnd = now;
+  thrLastPulseWidth = now - thrLastPulseStart;
 }
 
 void auxInterrupt() {
   uint32_t now = micros();
-  uint8_t state = digitalRead(chnInputPins[CHN_AUX]);
-  handleChnEvent(now, CHN_AUX, state);
-}
+  uint8_t state = digitalRead(PIN_AUX);
 
-void thrInterrupt() {
-  uint32_t now = micros();
-  uint8_t state = digitalRead(chnInputPins[CHN_THR]);
-  handleChnEvent(now, CHN_THR, state);
+  if (state == 1) {
+    auxLastPulseStart = now;
+    return;
+  }
+  
+  thrLastPulseEnd = now;
+  auxLastPulseWidth = now - auxLastPulseStart;
 }
 
 //
 
 void setup() {
-  for (uint8_t chnIndex = 0; chnIndex < CHN_COUNT; chnIndex++) {
-    pinMode(chnInputPins[chnIndex], INPUT);
-    pinMode(chnOutputLeds[chnIndex], OUTPUT);
-  }
-  
-  attachInterrupt(digitalPinToInterrupt(chnInputPins[CHN_AUX]), auxInterrupt, CHANGE);
-  attachInterrupt(digitalPinToInterrupt(chnInputPins[CHN_THR]), thrInterrupt, CHANGE);
+  pinMode(LED_BUILTIN, OUTPUT);
+  digitalWrite(LED_BUILTIN, 0);
+
+  pinMode(PIN_THR, INPUT);
+  pinMode(PIN_AUX, INPUT);
+  pinMode(PIN_BRAKE, OUTPUT);
+  pinMode(PIN_HAZARD, OUTPUT);
+
+  attachInterrupt(INT_THR, thrInterrupt, CHANGE);
+  attachInterrupt(INT_AUX, auxInterrupt, CHANGE);
 
   // ready
-  pinMode(LED_BUILTIN, OUTPUT);
   digitalWrite(LED_BUILTIN, 1);
 }
 
@@ -136,7 +94,7 @@ enum THR_STATES {
 //   - if higher: OFF
 //   - if lower: ON
 
-void processThr(bool blinkPulse, bool errorPulse) {
+void processThr(bool blinkPulse) {
   static THR_STATES lastThrState = NEUTRAL;
   static uint32_t lastThrStateTs = micros();
   static uint32_t lastThrPulseWidth = 0;
@@ -145,13 +103,7 @@ void processThr(bool blinkPulse, bool errorPulse) {
   static bool throttleMoved = false;
 
   uint32_t now = micros();
-  uint32_t pulseWidth = chnLastPulseWidth[CHN_THR];
-
-  if (pulseWidth == 0) {
-    // no signal
-    digitalWrite(chnOutputLeds[CHN_THR], errorPulse);
-    return;
-  }
+  uint32_t pulseWidth = thrLastPulseWidth;
 
   THR_STATES thrState = NEUTRAL;
   if (pulseWidth <= 1450U) {
@@ -166,7 +118,7 @@ void processThr(bool blinkPulse, bool errorPulse) {
 
   if (!throttleMoved) {
     // blink untill throttle moved
-    digitalWrite(chnOutputLeds[CHN_THR], blinkPulse);
+    digitalWrite(PIN_BRAKE, blinkPulse);
     return;
   }
 
@@ -214,24 +166,18 @@ void processThr(bool blinkPulse, bool errorPulse) {
 
   // serves as both position and brake
   uint8_t brakeLightValue = brakeLight ? BRAKE_LIGHT : POSITION_LIGHT;
-  analogWrite(chnOutputLeds[CHN_THR], brakeLightValue);
+  analogWrite(PIN_BRAKE, brakeLightValue);
 }
 
-void processAux2P(bool blinkPulse, bool errorPulse) {
-  uint32_t pulseWidth = chnLastPulseWidth[CHN_AUX];
-
-  if (pulseWidth == 0) {
-    // no signal
-    digitalWrite(chnOutputLeds[CHN_AUX], errorPulse);
-    return;
-  }
+void processAux2P(bool blinkPulse) {
+  uint32_t pulseWidth = auxLastPulseWidth;
 
   if (pulseWidth > AUX_CHN_HIGH_THRES) {
-    digitalWrite(chnOutputLeds[CHN_AUX], blinkPulse);
+    digitalWrite(PIN_HAZARD, blinkPulse);
   } else if (pulseWidth < AUX_CHN_LOW_THRES) {
-    digitalWrite(chnOutputLeds[CHN_AUX], 0);
+    digitalWrite(PIN_HAZARD, 0);
   } else {
-    digitalWrite(chnOutputLeds[CHN_AUX], 0);
+    digitalWrite(PIN_HAZARD, 0);
   }
 }
 
@@ -242,17 +188,29 @@ void loop() {
   static bool errorPattern[] = {0, 1};
 
   uint32_t now = micros();
-  uint32_t pulse = now / 80000U;
+  uint32_t pulse = now >> 16;
 
   blinkPulse = blinkPattern[pulse % sizeof(blinkPattern)];
   errorPulse = errorPattern[pulse % sizeof(errorPattern)];
 
-  //checkChnSignalLoss(now, CHN_THR);
-  //checkChnSignalLoss(now, CHN_AUX);
+  bool validThr = thrLastPulseWidth >= MIN_VALID_PULSE && thrLastPulseWidth <= MAX_VALID_PULSE
+    //&& now - thrLastPulseStart < 3000000;
+    && thrLastPulseStart > 0;
+  if (validThr) {
+    processThr(blinkPulse);
+  } else {
+    digitalWrite(PIN_BRAKE, 1 - errorPulse);
+  }
 
-  processThr(blinkPulse, errorPulse);
-  processAux2P(blinkPulse, errorPulse);
+  bool validAux = auxLastPulseWidth >= MIN_VALID_PULSE && auxLastPulseWidth <= MAX_VALID_PULSE
+    //&& now - auxLastPulseStart < 3000000;
+    && auxLastPulseStart > 0;
+  if (validAux) {
+    processAux2P(blinkPulse);
+  } else {
+    digitalWrite(PIN_HAZARD, errorPulse);
+  }
 
   // TODO figure out what delay we want (ms)
-  delay(3);
+  delay(20);
 }
