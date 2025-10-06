@@ -1,11 +1,9 @@
 #include <Arduino.h>
-
+#include <digitalWriteFast.h>
 
 // RC channel pins
 #define PIN_THR 2
-#define INT_THR 0
 #define PIN_AUX 3
-#define INT_AUX 1
 
 // output pins to lights (pwm capable)
 #define PIN_BRAKE 10
@@ -37,8 +35,8 @@ volatile uint32_t auxLastPulseWidth = 0;
 //
 
 void thrInterrupt() {
+  uint8_t state = digitalReadFast(PIN_THR);
   uint32_t now = micros();
-  uint8_t state = digitalRead(PIN_THR);
 
   if (state == 1) {
     thrLastPulseStart = now;
@@ -50,8 +48,8 @@ void thrInterrupt() {
 }
 
 void auxInterrupt() {
+  uint8_t state = digitalReadFast(PIN_AUX);
   uint32_t now = micros();
-  uint8_t state = digitalRead(PIN_AUX);
 
   if (state == 1) {
     auxLastPulseStart = now;
@@ -68,13 +66,15 @@ void setup() {
   pinMode(LED_BUILTIN, OUTPUT);
   digitalWrite(LED_BUILTIN, 0);
 
-  pinMode(PIN_THR, INPUT);
-  pinMode(PIN_AUX, INPUT);
+  pinModeFast(PIN_THR, INPUT);
+  pinModeFast(PIN_AUX, INPUT);
+  attachInterrupt(digitalPinToInterrupt(PIN_THR), thrInterrupt, CHANGE);
+  attachInterrupt(digitalPinToInterrupt(PIN_AUX), auxInterrupt, CHANGE);
+
   pinMode(PIN_BRAKE, OUTPUT);
   pinMode(PIN_HAZARD, OUTPUT);
-
-  attachInterrupt(INT_THR, thrInterrupt, CHANGE);
-  attachInterrupt(INT_AUX, auxInterrupt, CHANGE);
+  digitalWrite(PIN_BRAKE, 0);
+  digitalWrite(PIN_HAZARD, 0);
 
   // ready
   digitalWrite(LED_BUILTIN, 1);
@@ -185,7 +185,7 @@ void loop() {
   static uint8_t blinkPulse = 0;
   static uint8_t errorPulse = 0;
   static bool blinkPattern[] = {1, 1, 1, 0, 0, 0, 0, 0, 0, 0};
-  static bool errorPattern[] = {0, 1};
+  static bool errorPattern[] = {0, 0, 1, 1};
 
   uint32_t now = micros();
   uint32_t pulse = now >> 16;
