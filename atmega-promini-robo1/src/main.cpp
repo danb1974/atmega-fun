@@ -1,4 +1,5 @@
 #include <Arduino.h>
+#include <digitalWriteFast.h>
 
 // MOTOR outputs (must be pwm-capable pins)
 #define PIN_MOTOR_1A 10
@@ -8,9 +9,7 @@
 
 // RC channel pins
 #define PIN_STR 2
-#define INT_STR 0
 #define PIN_THR 3
-#define INT_THR 1
 
 // RC channel data
 volatile uint32_t strLastPulseStart;
@@ -19,8 +18,8 @@ volatile uint32_t thrLastPulseStart;
 volatile uint32_t thrLastPulseWidth;
 
 void strInterrupt() {
+  uint8_t state = digitalReadFast(PIN_STR);
   uint32_t now = micros();
-  uint8_t state = digitalRead(PIN_STR);
 
   if (state == 1) {
     strLastPulseStart = now;
@@ -30,8 +29,8 @@ void strInterrupt() {
 }
 
 void thrInterrupt() {
+  uint8_t state = digitalReadFast(PIN_THR);
   uint32_t now = micros();
-  uint8_t state = digitalRead(PIN_THR);
 
   if (state == 1) {
     thrLastPulseStart = now;
@@ -58,7 +57,7 @@ void testMotors()
 
 void setup() {
   pinMode(LED_BUILTIN, OUTPUT);
-  digitalWrite(LED_BUILTIN, 0);
+  analogWrite(LED_BUILTIN, 0);
 
   Serial.begin(115200);
   Serial.println("Initializing");
@@ -73,20 +72,21 @@ void setup() {
   analogWrite(PIN_MOTOR_2A, 0);
   analogWrite(PIN_MOTOR_2B, 0);
 
-  pinMode(PIN_STR, INPUT);
-  attachInterrupt(INT_STR, strInterrupt, CHANGE);
+  pinModeFast(PIN_STR, INPUT_PULLUP);
+  attachInterrupt(digitalPinToInterrupt(PIN_STR), strInterrupt, CHANGE);
 
-  pinMode(PIN_THR, INPUT);
-  attachInterrupt(INT_THR, thrInterrupt, CHANGE);
+  pinModeFast(PIN_THR, INPUT_PULLUP);
+  attachInterrupt(digitalPinToInterrupt(PIN_THR), thrInterrupt, CHANGE);
 
   testMotors();
 
-  digitalWrite(LED_BUILTIN, 1);
+  analogWrite(LED_BUILTIN, 255);
   Serial.println("Running");
 }
 
 void loop() {
   uint32_t now = micros();
+  static uint8_t badConsecutivePulses = 0;
 
   #if 0
   static char buffer[64];
@@ -94,21 +94,45 @@ void loop() {
   Serial.println(buffer);
   #endif
 
-  bool validStr = strLastPulseWidth >= 1000 && strLastPulseWidth <= 2000
-    && now - strLastPulseStart <= 1000000;
-  bool validThr = thrLastPulseWidth >= 1000 && thrLastPulseWidth <= 2000
-    && now - thrLastPulseStart <= 1000000;
+  bool validStr = strLastPulseWidth >= 1000U && strLastPulseWidth <= 2000U;
+  bool freshStr = now - strLastPulseStart <= 500U * 1000U;
+  bool validThr = thrLastPulseWidth >= 1000U && thrLastPulseWidth <= 2000U;
+  bool freshThr = now - thrLastPulseStart <= 500U * 1000U;
 
-  if (!validStr || !validThr) {
-    // no signal, stop
+  bool validPulse = validStr && validThr;
+  bool freshPulse = freshStr && freshThr;
+
+  if (validPulse && freshPulse) {
+    badConsecutivePulses = 0;
+  } else {
+    if (badConsecutivePulses < 255) {
+      badConsecutivePulses++;
+    }
+  }
+
+  if (!freshPulse || badConsecutivePulses > 10) {
+    //Serial.println("No signal");
+    Serial.write("No signal: thr ");
+    Serial.write(validThr ? "+" : "-");
+    Serial.write("/");
+    Serial.write(freshThr ? "+" : "-");
+    Serial.write(" str ");
+    Serial.write(validStr ? "+" : "-");
+    Serial.write("/");
+    Serial.write(freshStr ? "+" : "-");
+    Serial.write(" bad ");
+    Serial.print(badConsecutivePulses);
+    Serial.println();
+
+    // no good signal for a while
     analogWrite(PIN_MOTOR_1A, 0);
     analogWrite(PIN_MOTOR_1B, 0);
     analogWrite(PIN_MOTOR_2A, 0);
     analogWrite(PIN_MOTOR_2B, 0);
 
-    digitalWrite(LED_BUILTIN, 0);
+    analogWrite(LED_BUILTIN, 0);
 
-  } else {
+  } else if (validPulse) {
     // good signal
     uint8_t motor1a = 0;
     uint8_t motor1b = 0;
@@ -157,8 +181,13 @@ void loop() {
     analogWrite(PIN_MOTOR_2A, motor2a);
     analogWrite(PIN_MOTOR_2B, motor2b);
     
-    digitalWrite(LED_BUILTIN, 1);
+    analogWrite(LED_BUILTIN, 255);
+
+  } else {
+    // stale but not bad enough to take action
+    Serial.println("Stale signal");
+    analogWrite(LED_BUILTIN, 127);
   }
 
-  delay(100);
+  delay(50);
 }
