@@ -12,19 +12,24 @@
 #define PIN_THR 3
 
 // RC channel data
-volatile uint32_t strLastPulseStart;
-volatile uint32_t strLastPulseWidth;
-volatile uint32_t thrLastPulseStart;
-volatile uint32_t thrLastPulseWidth;
+
+struct rcInputs_t {
+  uint32_t strLastPulseStart;
+  uint32_t strLastPulseWidth;
+  uint32_t thrLastPulseStart;
+  uint32_t thrLastPulseWidth;
+};
+
+volatile static rcInputs_t rcInputs;
 
 void strInterrupt() {
   uint8_t state = digitalReadFast(PIN_STR);
   uint32_t now = micros();
 
   if (state == 1) {
-    strLastPulseStart = now;
+    rcInputs.strLastPulseStart = now;
   } else {
-    strLastPulseWidth = now - strLastPulseStart;
+    rcInputs.strLastPulseWidth = now - rcInputs.strLastPulseStart;
   }
 }
 
@@ -33,9 +38,9 @@ void thrInterrupt() {
   uint32_t now = micros();
 
   if (state == 1) {
-    thrLastPulseStart = now;
+    rcInputs.thrLastPulseStart = now;
   } else {
-    thrLastPulseWidth = now - thrLastPulseStart;
+    rcInputs.thrLastPulseWidth = now - rcInputs.thrLastPulseStart;
   }
 }
 
@@ -85,7 +90,7 @@ void setup() {
 }
 
 void loop() {
-  uint32_t now = micros();
+  static rcInputs_t rcInputsCopy;
   static uint8_t badConsecutivePulses = 0;
 
   #if 0
@@ -94,10 +99,16 @@ void loop() {
   Serial.println(buffer);
   #endif
 
-  bool validStr = strLastPulseWidth >= 1000U && strLastPulseWidth <= 2000U;
-  bool freshStr = now - strLastPulseStart <= 500U * 1000U;
-  bool validThr = thrLastPulseWidth >= 1000U && thrLastPulseWidth <= 2000U;
-  bool freshThr = now - thrLastPulseStart <= 500U * 1000U;
+  uint32_t now = micros();
+
+  noInterrupts();
+  memcpy(&rcInputsCopy, (void *)&rcInputs, sizeof(rcInputs_t));
+  interrupts();
+
+  bool validStr = rcInputsCopy.strLastPulseWidth >= 1000U && rcInputsCopy.strLastPulseWidth <= 2000U;
+  bool freshStr = now - rcInputsCopy.strLastPulseStart <= 1000000U;
+  bool validThr = rcInputsCopy.thrLastPulseWidth >= 1000U && rcInputsCopy.thrLastPulseWidth <= 2000U;
+  bool freshThr = now - rcInputsCopy.thrLastPulseStart <= 1000000U;
 
   bool validPulse = validStr && validThr;
   bool freshPulse = freshStr && freshThr;
@@ -140,13 +151,13 @@ void loop() {
     uint8_t motor2b = 0;
 
     int16_t thrPercent = 0;
-    if (thrLastPulseWidth > 1600 || thrLastPulseWidth < 1400) {
-      thrPercent = ((int16_t)(thrLastPulseWidth) - 1500) / 5;
+    if (rcInputsCopy.thrLastPulseWidth > 1600 || rcInputsCopy.thrLastPulseWidth < 1400) {
+      thrPercent = ((int16_t)(rcInputsCopy.thrLastPulseWidth) - 1500) / 5;
     }
 
     int16_t strPercent = 0;
-    if (strLastPulseWidth > 1600 || strLastPulseWidth < 1400) {
-      strPercent = ((int16_t)(strLastPulseWidth) - 1500) / 5;
+    if (rcInputsCopy.strLastPulseWidth > 1600 || rcInputsCopy.strLastPulseWidth < 1400) {
+      strPercent = ((int16_t)(rcInputsCopy.strLastPulseWidth) - 1500) / 5;
     }
 
     int16_t thr1Percent = 0;
@@ -189,5 +200,5 @@ void loop() {
     analogWrite(LED_BUILTIN, 127);
   }
 
-  delay(50);
+  delay(10);
 }
