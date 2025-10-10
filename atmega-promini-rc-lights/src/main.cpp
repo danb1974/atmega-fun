@@ -10,12 +10,16 @@
 #define PIN_HAZARD 11
 
 // RC channel data
-volatile uint32_t thrLastPulseStart = 0;
-volatile uint32_t thrLastPulseEnd = 0;
-volatile uint32_t thrLastPulseWidth = 0;
-volatile uint32_t auxLastPulseStart = 0;
-volatile uint32_t auxLastPulseEnd = 0;
-volatile uint32_t auxLastPulseWidth = 0;
+struct rcInput_t {
+  uint32_t thrLastPulseStart = 0;
+  uint32_t thrLastPulseEnd = 0;
+  uint32_t thrLastPulseWidth = 0;
+  uint32_t auxLastPulseStart = 0;
+  uint32_t auxLastPulseEnd = 0;
+  uint32_t auxLastPulseWidth = 0;
+};
+
+volatile static rcInput_t rcInput;
 
 // rc pulse width range (us)
 #define MIN_VALID_PULSE 1000U - 100U
@@ -39,12 +43,12 @@ void thrInterrupt() {
   uint32_t now = micros();
 
   if (state == 1) {
-    thrLastPulseStart = now;
+    rcInput.thrLastPulseStart = now;
     return;
   }
 
-  thrLastPulseEnd = now;
-  thrLastPulseWidth = now - thrLastPulseStart;
+  rcInput.thrLastPulseEnd = now;
+  rcInput.thrLastPulseWidth = now - rcInput.thrLastPulseStart;
 }
 
 void auxInterrupt() {
@@ -52,12 +56,12 @@ void auxInterrupt() {
   uint32_t now = micros();
 
   if (state == 1) {
-    auxLastPulseStart = now;
+    rcInput.auxLastPulseStart = now;
     return;
   }
   
-  thrLastPulseEnd = now;
-  auxLastPulseWidth = now - auxLastPulseStart;
+  rcInput.thrLastPulseEnd = now;
+  rcInput.auxLastPulseWidth = now - rcInput.auxLastPulseStart;
 }
 
 //
@@ -94,16 +98,13 @@ enum THR_STATES {
 //   - if higher: OFF
 //   - if lower: ON
 
-void processThr(bool blinkPulse) {
+void processThr(const uint32_t now, const uint32_t pulseWidth, const bool blinkPulse) {
   static THR_STATES lastThrState = NEUTRAL;
   static uint32_t lastThrStateTs = micros();
   static uint32_t lastThrPulseWidth = 0;
   static uint32_t lastThrPulseWidthTs = micros();
   static bool brakeLight = true;
   static bool throttleMoved = false;
-
-  uint32_t now = micros();
-  uint32_t pulseWidth = thrLastPulseWidth;
 
   THR_STATES thrState = NEUTRAL;
   if (pulseWidth <= 1450U) {
@@ -169,9 +170,7 @@ void processThr(bool blinkPulse) {
   analogWrite(PIN_BRAKE, brakeLightValue);
 }
 
-void processAux2P(bool blinkPulse) {
-  uint32_t pulseWidth = auxLastPulseWidth;
-
+void processAux2P(const uint32_t now, const uint32_t pulseWidth, const bool blinkPulse) {
   if (pulseWidth > AUX_CHN_HIGH_THRES) {
     digitalWrite(PIN_HAZARD, blinkPulse);
   } else if (pulseWidth < AUX_CHN_LOW_THRES) {
@@ -182,31 +181,36 @@ void processAux2P(bool blinkPulse) {
 }
 
 void loop() {
+  static rcInput_t rcInputCopy;
   static uint8_t blinkPulse = 0;
   static uint8_t errorPulse = 0;
   static bool blinkPattern[] = {1, 1, 1, 0, 0, 0, 0, 0, 0, 0};
   static bool errorPattern[] = {0, 0, 1, 1};
 
   uint32_t now = micros();
-  uint32_t pulse = now >> 16;
 
+  noInterrupts();
+  memcpy(&rcInputCopy, (void *)&rcInput, sizeof(rcInput_t));
+  interrupts();
+
+  uint32_t pulse = now >> 16;
   blinkPulse = blinkPattern[pulse % sizeof(blinkPattern)];
   errorPulse = errorPattern[pulse % sizeof(errorPattern)];
 
-  bool validThr = thrLastPulseWidth >= MIN_VALID_PULSE && thrLastPulseWidth <= MAX_VALID_PULSE
-    //&& now - thrLastPulseStart < 3000000;
-    && thrLastPulseStart > 0;
+  bool validThr = rcInputCopy.thrLastPulseWidth >= MIN_VALID_PULSE && rcInputCopy.thrLastPulseWidth <= MAX_VALID_PULSE
+    //&& now - rcInputCopy.thrLastPulseStart < 1000000;
+    && rcInputCopy.thrLastPulseStart > 0;
   if (validThr) {
-    processThr(blinkPulse);
+    processThr(now, rcInputCopy.thrLastPulseWidth, blinkPulse);
   } else {
     analogWrite(PIN_BRAKE, (1 - errorPulse) * 127);
   }
 
-  bool validAux = auxLastPulseWidth >= MIN_VALID_PULSE && auxLastPulseWidth <= MAX_VALID_PULSE
-    //&& now - auxLastPulseStart < 3000000;
-    && auxLastPulseStart > 0;
+  bool validAux = rcInputCopy.auxLastPulseWidth >= MIN_VALID_PULSE && rcInputCopy.auxLastPulseWidth <= MAX_VALID_PULSE
+    //&& now - rcInputCopy.auxLastPulseStart < 1000000;
+    && rcInputCopy.auxLastPulseStart > 0;
   if (validAux) {
-    processAux2P(blinkPulse);
+    processAux2P(now, rcInputCopy.auxLastPulseWidth, blinkPulse);
   } else {
     digitalWrite(PIN_HAZARD, errorPulse);
   }
