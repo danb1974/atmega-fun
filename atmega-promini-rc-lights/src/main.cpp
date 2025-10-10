@@ -73,7 +73,7 @@ void setup() {
 
   pinMode(PIN_BRAKE, OUTPUT);
   pinMode(PIN_HAZARD, OUTPUT);
-  digitalWrite(PIN_BRAKE, 0);
+  analogWrite(PIN_BRAKE, 0);
   digitalWrite(PIN_HAZARD, 0);
 
   // ready
@@ -118,7 +118,7 @@ void processThr(bool blinkPulse) {
 
   if (!throttleMoved) {
     // blink untill throttle moved
-    digitalWrite(PIN_BRAKE, blinkPulse);
+    analogWrite(PIN_BRAKE, blinkPulse * 127);
     return;
   }
 
@@ -199,7 +199,7 @@ void loop() {
   if (validThr) {
     processThr(blinkPulse);
   } else {
-    digitalWrite(PIN_BRAKE, 1 - errorPulse);
+    analogWrite(PIN_BRAKE, (1 - errorPulse) * 127);
   }
 
   bool validAux = auxLastPulseWidth >= MIN_VALID_PULSE && auxLastPulseWidth <= MAX_VALID_PULSE
