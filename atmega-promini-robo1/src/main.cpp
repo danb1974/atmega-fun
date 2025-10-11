@@ -1,5 +1,12 @@
 #include <Arduino.h>
 #include <digitalWriteFast.h>
+#include <FastLED.h>
+
+// serial led matrix 4x4
+#define LED_PIN 9
+#define LED_COUNT 16
+
+static CRGB ledStrip[LED_COUNT];
 
 // MOTOR outputs (must be pwm-capable pins)
 #define PIN_MOTOR_1A 10
@@ -14,10 +21,10 @@
 // RC channel data
 
 struct rcInputs_t {
-  uint32_t strLastPulseStart;
-  uint32_t strLastPulseWidth;
-  uint32_t thrLastPulseStart;
-  uint32_t thrLastPulseWidth;
+  uint32_t strLastPulseStart = 0;
+  uint32_t strLastPulseWidth = 0;
+  uint32_t thrLastPulseStart = 0;
+  uint32_t thrLastPulseWidth = 0;
 };
 
 volatile static rcInputs_t rcInputs;
@@ -49,13 +56,13 @@ void testMotors()
   // motor test
   analogWrite(PIN_MOTOR_1A, 31);
   analogWrite(PIN_MOTOR_2A, 31);
-  delay(50);
+  delay(100);
   analogWrite(PIN_MOTOR_1A, 0);
   analogWrite(PIN_MOTOR_2A, 0);
-  delay(50);
+  delay(100);
   analogWrite(PIN_MOTOR_1B, 31);
   analogWrite(PIN_MOTOR_2B, 31);
-  delay(50);
+  delay(100);
   analogWrite(PIN_MOTOR_1B, 0);
   analogWrite(PIN_MOTOR_2B, 0);
 }
@@ -76,6 +83,14 @@ void setup() {
   analogWrite(PIN_MOTOR_1B, 0);
   analogWrite(PIN_MOTOR_2A, 0);
   analogWrite(PIN_MOTOR_2B, 0);
+
+  FastLED.addLeds<WS2812, LED_PIN, GRB>(ledStrip, LED_COUNT);
+  FastLED.setBrightness(3);
+  for (int32_t i = 0xff0000; i != 0; i >>= 8) {
+    FastLED.showColor(CRGB(i));
+    delay(100);
+  }
+  FastLED.showColor(CRGB(0));
 
   pinModeFast(PIN_STR, INPUT_PULLUP);
   attachInterrupt(digitalPinToInterrupt(PIN_STR), strInterrupt, CHANGE);
