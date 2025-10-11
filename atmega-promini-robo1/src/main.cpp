@@ -1,3 +1,5 @@
+#define FASTLED_ALLOW_INTERRUPTS 1
+
 #include <Arduino.h>
 #include <digitalWriteFast.h>
 #include <FastLED.h>
@@ -158,6 +160,8 @@ void loop() {
 
     analogWrite(LED_BUILTIN, 0);
 
+    FastLED.showColor(CHSV(0, 0, 0));
+
   } else if (validPulse) {
     // good signal
     uint8_t motor1a = 0;
@@ -206,12 +210,42 @@ void loop() {
     analogWrite(PIN_MOTOR_1B, motor1b);
     analogWrite(PIN_MOTOR_2A, motor2a);
     analogWrite(PIN_MOTOR_2B, motor2b);
+
+    // hsv: 0 = red, 96 = green
+    static uint8_t bar1O[4] = {15, 8, 7, 0};
+    static uint8_t bar1I[4] = {14, 9, 6, 1};
+    static uint8_t bar2I[4] = {13, 10, 5, 2};
+    static uint8_t bar2O[4] = {12, 11, 4, 3};
+
+    uint8_t hsv1V = floor(abs(thr1Percent) * 96U / 100U);
+    uint8_t hsv2V = floor(abs(thr2Percent) * 96U / 100U);
+    uint8_t hsv1L = floor(min(abs(thr1Percent), 99U) / 25U);
+    uint8_t hsv2L = floor(min(abs(thr2Percent), 99U) / 25U);
+    for (uint8_t i = 0; i < LED_COUNT; i++) {
+      ledStrip[i] = CHSV(0, 0, 0);
+    }
+    if (thr1Percent != 0) {
+      for (uint8_t l = 0; l <= hsv1L; l++) {
+        uint8_t i = (thr1Percent > 0) ? l : 3 - l;
+        ledStrip[bar1I[i]] = CHSV(hsv1V, 255, 255);
+        ledStrip[bar1O[i]] = CHSV(hsv1V, 255, 255);
+      }
+    }
+    if (thr2Percent != 0) {
+      for (uint8_t l = 0; l <= hsv2L; l++) {
+        uint8_t i = (thr2Percent > 0) ? l : 3 - l;
+        ledStrip[bar2I[i]] = CHSV(hsv2V, 255, 255);
+        ledStrip[bar2O[i]] = CHSV(hsv2V, 255, 255);
+      }
+    }
+    FastLED.show();
     
     analogWrite(LED_BUILTIN, 255);
 
   } else {
     // stale but not bad enough to take action
     Serial.println("Stale signal");
+    FastLED.showColor(CHSV(0, 0, 0));
     analogWrite(LED_BUILTIN, 127);
   }
 
