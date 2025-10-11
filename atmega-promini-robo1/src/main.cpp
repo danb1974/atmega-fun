@@ -211,6 +211,7 @@ void loop() {
     analogWrite(PIN_MOTOR_2A, motor2a);
     analogWrite(PIN_MOTOR_2B, motor2b);
 
+    #if 0
     // hsv: 0 = red, 96 = green
     static uint8_t bar1O[4] = {15, 8, 7, 0};
     static uint8_t bar1I[4] = {14, 9, 6, 1};
@@ -221,6 +222,7 @@ void loop() {
     uint8_t hsv2V = floor(abs(thr2Percent) * 96U / 100U);
     uint8_t hsv1L = floor(min(abs(thr1Percent), 99U) / 25U);
     uint8_t hsv2L = floor(min(abs(thr2Percent), 99U) / 25U);
+
     for (uint8_t i = 0; i < LED_COUNT; i++) {
       ledStrip[i] = CHSV(0, 0, 0);
     }
@@ -238,6 +240,31 @@ void loop() {
         ledStrip[bar2O[i]] = CHSV(hsv2V, 255, 255);
       }
     }
+    #else
+    static uint8_t bar1[8] = {14, 15, 8, 9, 6, 7, 0, 1};
+    static uint8_t bar2[8] = {13, 12, 11, 10, 5, 4, 3, 2};
+
+    uint8_t hsv1V = floor(abs(thr1Percent) * 96U / 100U);
+    uint8_t hsv2V = floor(abs(thr2Percent) * 96U / 100U);
+    uint8_t hsv1L = floor(min(abs(thr1Percent), 95U) / 12U);
+    uint8_t hsv2L = floor(min(abs(thr2Percent), 95U) / 12U);
+
+    for (uint8_t i = 0; i < LED_COUNT; i++) {
+      ledStrip[i] = CHSV(0, 0, 0);
+    }
+    if (thr1Percent != 0) {
+      for (uint8_t l = 0; l <= hsv1L; l++) {
+        uint8_t i = (thr1Percent > 0) ? l : 7 - l;
+        ledStrip[bar1[i]] = CHSV(hsv1V, 255, 255);
+      }
+    }
+    if (thr2Percent != 0) {
+      for (uint8_t l = 0; l <= hsv2L; l++) {
+        uint8_t i = (thr2Percent > 0) ? l : 7 - l;
+        ledStrip[bar2[i]] = CHSV(hsv2V, 255, 255);
+      }
+    }
+    #endif
     FastLED.show();
     
     analogWrite(LED_BUILTIN, 255);
