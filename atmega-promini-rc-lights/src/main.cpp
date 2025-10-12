@@ -1,5 +1,4 @@
 #include <Arduino.h>
-#include <digitalWriteFast.h>
 
 // RC channel pins
 #define PIN_THR 2
@@ -12,14 +11,12 @@
 // RC channel data
 struct rcInput_t {
   uint32_t thrLastPulseStart = 0;
-  uint32_t thrLastPulseEnd = 0;
   uint32_t thrLastPulseWidth = 0;
   uint32_t auxLastPulseStart = 0;
-  uint32_t auxLastPulseEnd = 0;
   uint32_t auxLastPulseWidth = 0;
 };
 
-volatile static rcInput_t rcInput;
+static rcInput_t rcInputs;
 
 // rc pulse width range (us)
 #define MIN_VALID_PULSE 1000U - 100U
@@ -38,47 +35,17 @@ volatile static rcInput_t rcInput;
 
 //
 
-void thrInterrupt() {
-  uint8_t state = digitalReadFast(PIN_THR);
-  uint32_t now = micros();
-
-  if (state == 1) {
-    rcInput.thrLastPulseStart = now;
-    return;
-  }
-
-  rcInput.thrLastPulseEnd = now;
-  rcInput.thrLastPulseWidth = now - rcInput.thrLastPulseStart;
-}
-
-void auxInterrupt() {
-  uint8_t state = digitalReadFast(PIN_AUX);
-  uint32_t now = micros();
-
-  if (state == 1) {
-    rcInput.auxLastPulseStart = now;
-    return;
-  }
-  
-  rcInput.thrLastPulseEnd = now;
-  rcInput.auxLastPulseWidth = now - rcInput.auxLastPulseStart;
-}
-
-//
-
 void setup() {
   pinMode(LED_BUILTIN, OUTPUT);
   digitalWrite(LED_BUILTIN, 0);
 
-  pinModeFast(PIN_THR, INPUT);
-  pinModeFast(PIN_AUX, INPUT);
-  attachInterrupt(digitalPinToInterrupt(PIN_THR), thrInterrupt, CHANGE);
-  attachInterrupt(digitalPinToInterrupt(PIN_AUX), auxInterrupt, CHANGE);
+  pinMode(PIN_THR, INPUT);
+  pinMode(PIN_AUX, INPUT);
 
   pinMode(PIN_BRAKE, OUTPUT);
   pinMode(PIN_HAZARD, OUTPUT);
   analogWrite(PIN_BRAKE, 0);
-  digitalWrite(PIN_HAZARD, 0);
+  analogWrite(PIN_HAZARD, 0);
 
   // ready
   digitalWrite(LED_BUILTIN, 1);
@@ -172,49 +139,62 @@ void processThr(const uint32_t now, const uint32_t pulseWidth, const bool blinkP
 
 void processAux2P(const uint32_t now, const uint32_t pulseWidth, const bool blinkPulse) {
   if (pulseWidth > AUX_CHN_HIGH_THRES) {
-    digitalWrite(PIN_HAZARD, blinkPulse);
+    analogWrite(PIN_HAZARD, blinkPulse * 255);
   } else if (pulseWidth < AUX_CHN_LOW_THRES) {
-    digitalWrite(PIN_HAZARD, 0);
+    analogWrite(PIN_HAZARD, 0);
   } else {
-    digitalWrite(PIN_HAZARD, 0);
+    analogWrite(PIN_HAZARD, 0);
   }
 }
 
 void loop() {
-  static rcInput_t rcInputCopy;
+  static uint8_t badConsecutivePulses = 0;
   static uint8_t blinkPulse = 0;
   static uint8_t errorPulse = 0;
   static bool blinkPattern[] = {1, 1, 1, 0, 0, 0, 0, 0, 0, 0};
-  static bool errorPattern[] = {0, 0, 1, 1};
+  static bool errorPattern[] = {0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1};
 
   uint32_t now = micros();
 
-  noInterrupts();
-  memcpy(&rcInputCopy, (void *)&rcInput, sizeof(rcInput_t));
-  interrupts();
+  uint32_t thrPulseWidth = pulseIn(PIN_THR, HIGH, 25000);
+  if (thrPulseWidth > 0) {
+    rcInputs.thrLastPulseWidth = thrPulseWidth;
+    rcInputs.thrLastPulseStart = now;
+  }
+  uint32_t auxPulseWidth = pulseIn(PIN_AUX, HIGH, 25000);
+  if (auxPulseWidth > 0) {
+    rcInputs.auxLastPulseWidth = auxPulseWidth;
+    rcInputs.auxLastPulseStart = now;
+  }
+
+  bool validAux = rcInputs.auxLastPulseWidth >= 1000U && rcInputs.auxLastPulseWidth <= 2000U;
+  bool freshAux = now - rcInputs.auxLastPulseStart <= 100000U;
+  bool validThr = rcInputs.thrLastPulseWidth >= 1000U && rcInputs.thrLastPulseWidth <= 2000U;
+  bool freshThr = now - rcInputs.thrLastPulseStart <= 100000U;
+
+  bool validPulse = validAux && validThr;
+  bool freshPulse = freshAux && freshThr;
+
+  if (validPulse && freshPulse) {
+    badConsecutivePulses = 0;
+  } else {
+    if (badConsecutivePulses < 255) {
+      badConsecutivePulses++;
+    }
+  }
 
   uint32_t pulse = now >> 16;
   blinkPulse = blinkPattern[pulse % sizeof(blinkPattern)];
   errorPulse = errorPattern[pulse % sizeof(errorPattern)];
 
-  bool validThr = rcInputCopy.thrLastPulseWidth >= MIN_VALID_PULSE && rcInputCopy.thrLastPulseWidth <= MAX_VALID_PULSE
-    //&& now - rcInputCopy.thrLastPulseStart < 1000000;
-    && rcInputCopy.thrLastPulseStart > 0;
-  if (validThr) {
-    processThr(now, rcInputCopy.thrLastPulseWidth, blinkPulse);
+  if (freshPulse && badConsecutivePulses < 10) {
+    processThr(now, rcInputs.thrLastPulseWidth, blinkPulse);
+    processAux2P(now, rcInputs.auxLastPulseWidth, blinkPulse);
   } else {
-    analogWrite(PIN_BRAKE, (1 - errorPulse) * 127);
-  }
-
-  bool validAux = rcInputCopy.auxLastPulseWidth >= MIN_VALID_PULSE && rcInputCopy.auxLastPulseWidth <= MAX_VALID_PULSE
-    //&& now - rcInputCopy.auxLastPulseStart < 1000000;
-    && rcInputCopy.auxLastPulseStart > 0;
-  if (validAux) {
-    processAux2P(now, rcInputCopy.auxLastPulseWidth, blinkPulse);
-  } else {
-    digitalWrite(PIN_HAZARD, errorPulse);
+    analogWrite(PIN_BRAKE, (1 - errorPulse) * 255);
+    analogWrite(PIN_HAZARD, errorPulse * 255);
   }
 
   // TODO figure out what delay we want (ms)
-  delay(20);
+  delay(10);
 }
