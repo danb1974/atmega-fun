@@ -81,8 +81,6 @@ void setup() {
 }
 
 void loop() {
-  static uint8_t badConsecutivePulses = 0;
-
   uint32_t now = micros();
 
   uint32_t strPulseWidth = pulseIn(PIN_STR, HIGH, 25000);
@@ -104,6 +102,7 @@ void loop() {
   bool validPulse = validStr && validThr;
   bool freshPulse = freshStr && freshThr;
 
+  static uint8_t badConsecutivePulses = 0;
   if (validPulse && freshPulse) {
     badConsecutivePulses = 0;
   } else {
@@ -144,13 +143,31 @@ void loop() {
     uint8_t motor2b = 0;
 
     int16_t thrPercent = 0;
-    if (rcInputs.thrLastPulseWidth > 1600 || rcInputs.thrLastPulseWidth < 1400) {
-      thrPercent = ((int16_t)(rcInputs.thrLastPulseWidth) - 1500) / 5;
+    if (rcInputs.thrLastPulseWidth > 1600) {
+      thrPercent = ((int16_t)(rcInputs.thrLastPulseWidth - 100) - 1500) / 3;
+      if (thrPercent > 100) {
+        thrPercent = 100;
+      }
+    }
+    if (rcInputs.thrLastPulseWidth < 1400) {
+      thrPercent = ((int16_t)(rcInputs.thrLastPulseWidth + 100) - 1500) / 3;
+      if (thrPercent < -100) {
+        thrPercent = -100;
+      }
     }
 
     int16_t strPercent = 0;
-    if (rcInputs.strLastPulseWidth > 1600 || rcInputs.strLastPulseWidth < 1400) {
-      strPercent = ((int16_t)(rcInputs.strLastPulseWidth) - 1500) / 5;
+    if (rcInputs.strLastPulseWidth > 1600) {
+      strPercent = ((int16_t)(rcInputs.strLastPulseWidth - 100) - 1500) / 3;
+      if (strPercent > 100) {
+        strPercent = 100;
+      }
+    }
+    if (rcInputs.strLastPulseWidth < 1400) {
+      strPercent = ((int16_t)(rcInputs.strLastPulseWidth + 100) - 1500) / 3;
+      if (strPercent < -100) {
+        strPercent = -100;
+      }
     }
 
     int16_t thr1Percent = 0;
