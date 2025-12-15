@@ -11,7 +11,7 @@
 #define PIN_PROX_FR 8
 #define PIN_PROX_FL 9
 #define PIN_PROX_RR 12
-#define PIN_PROX_RL 13
+#define PIN_PROX_RL 4 // 13 is internal led...
 
 static CRGB ledStrip[LED_COUNT];
 
