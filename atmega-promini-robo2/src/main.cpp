@@ -97,6 +97,7 @@ void setup() {
 
 void loop() {
   uint32_t now = micros();
+  bool blinkState = now & 0x20000;
 
   uint32_t strPulseWidth = pulseIn(PIN_STR, HIGH, 25000);
   if (strPulseWidth > 0) {
@@ -279,28 +280,28 @@ void loop() {
     static uint8_t prox_led_fr[PROX_LED_CNT] = {2, 3, 4};
     if (prox_fr) {
       for (uint8_t i = 0; i < PROX_LED_CNT; i++) {
-        ledStrip[prox_led_fr[i]] = CHSV(PROX_LED_HUE, 255, 255);
+        ledStrip[prox_led_fr[i]] = CHSV(PROX_LED_HUE, 255, blinkState * 255);
       }
     }
 
     static uint8_t prox_led_fl[PROX_LED_CNT] = {0, 1, 7};
     if (prox_fl) {
       for (uint8_t i = 0; i < PROX_LED_CNT; i++) {
-        ledStrip[prox_led_fl[i]] = CHSV(PROX_LED_HUE, 255, 255);
+        ledStrip[prox_led_fl[i]] = CHSV(PROX_LED_HUE, 255, blinkState * 255);
       }
     }
 
     static uint8_t prox_led_rr[PROX_LED_CNT] = {11, 12, 13};
     if (prox_rr) {
       for (uint8_t i = 0; i < PROX_LED_CNT; i++) {
-        ledStrip[prox_led_rr[i]] = CHSV(PROX_LED_HUE, 255, 255);
+        ledStrip[prox_led_rr[i]] = CHSV(PROX_LED_HUE, 255, blinkState * 255);
       }
     }
 
     static uint8_t prox_led_rl[PROX_LED_CNT] = {8, 14, 15};
     if (prox_rl) {
       for (uint8_t i = 0; i < PROX_LED_CNT; i++) {
-        ledStrip[prox_led_rl[i]] = CHSV(PROX_LED_HUE, 255, 255);
+        ledStrip[prox_led_rl[i]] = CHSV(PROX_LED_HUE, 255, blinkState * 255);
       }
     }
 
