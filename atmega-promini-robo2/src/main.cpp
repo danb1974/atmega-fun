@@ -83,8 +83,10 @@ void setup() {
 
   // led matrix
   FastLED.addLeds<WS2812, LED_PIN, GRB>(ledStrip, LED_COUNT);
+  FastLED.setBrightness(16);
+  FastLED.setCorrection(TypicalLEDStrip);
+  FastLED.setDither(true);
   // and do a short test pattern
-  FastLED.setBrightness(3);
   for (int32_t i = 0xff0000; i != 0; i >>= 8) {
     FastLED.showColor(CRGB(i));
     delay(100);
@@ -94,6 +96,8 @@ void setup() {
   analogWrite(LED_BUILTIN, 255);
   Serial.println("Running");
 }
+
+static uint32_t tick = 0;
 
 void loop() {
   uint32_t now = micros();
@@ -278,7 +282,7 @@ void loop() {
 
     if (thr1Percent == 0 && thr2Percent == 0) {
       for (uint8_t i = 0; i < sizeof(stop) / sizeof(stop[0]); i++) {
-        ledStrip[stop[i]] = CRGB::White;
+        ledStrip[stop[i]] = CHSV((tick / 2) & 0xff, 255, 255);
       }
     }
 
@@ -328,6 +332,8 @@ void loop() {
     FastLED.showColor(CHSV(0, 0, 0));
     analogWrite(LED_BUILTIN, 127);
   }
+
+  tick++;
 
   delay(10);
 }
