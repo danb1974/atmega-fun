@@ -33,6 +33,9 @@ static rcInput_t rcInputs;
 // when easying off throttle, what decrease should trigger brake
 #define THR_BRAKE_TRIGGER_OFFSET 20U
 
+// how much to keep brake light on when backing off throttle
+#define BRAKE_LIGHT_OFF_DELAY 5U
+
 //
 
 void setup() {
@@ -72,6 +75,7 @@ void processThr(const uint32_t now, const uint32_t pulseWidth, const bool blinkP
   static uint32_t lastThrPulseWidthTs = micros();
   static bool brakeLight = true;
   static bool throttleMoved = false;
+  static uint32_t brakeLightCountdown = 0;
 
   THR_STATES thrState = NEUTRAL;
   if (pulseWidth <= 1450U) {
@@ -95,6 +99,7 @@ void processThr(const uint32_t now, const uint32_t pulseWidth, const bool blinkP
     if (thrState == ACCEL) {
       // transition to accel; accel variation will be handled later
       brakeLight = false;
+      brakeLightCountdown = 0;
 
     } else if (thrState == NEUTRAL) {
       brakeLight = true;
@@ -106,6 +111,7 @@ void processThr(const uint32_t now, const uint32_t pulseWidth, const bool blinkP
         brakeLight = true;
       } else {
         brakeLight = false;
+        brakeLightCountdown = 0;
       }
     }
   }
@@ -116,6 +122,7 @@ void processThr(const uint32_t now, const uint32_t pulseWidth, const bool blinkP
     if (thrState == ACCEL && lastThrState == ACCEL) {
       if (pulseWidth < lastThrPulseWidth - THR_BRAKE_TRIGGER_OFFSET) {
         brakeLight = true;
+        brakeLightCountdown = BRAKE_LIGHT_OFF_DELAY;
       } else {
         brakeLight = false;
       }
@@ -130,6 +137,12 @@ void processThr(const uint32_t now, const uint32_t pulseWidth, const bool blinkP
   if (pulseWidth != lastThrPulseWidth) {
     lastThrPulseWidthTs = now;
     lastThrPulseWidth = pulseWidth;
+  }
+
+  // forced brake light on
+  if (brakeLightCountdown > 0) {
+    brakeLight = true;
+    brakeLightCountdown--;
   }
 
   // serves as both position and brake
