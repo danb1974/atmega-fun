@@ -19,8 +19,8 @@ struct rcInput_t {
 static rcInput_t rcInputs;
 
 // rc pulse width range (us)
-#define MIN_VALID_PULSE 1000U - 100U
-#define MAX_VALID_PULSE 2000U + 100U
+//#define MIN_VALID_PULSE 1000U - 100U
+//#define MAX_VALID_PULSE 2000U + 100U
 
 // aux switch thresholds (us)
 #define AUX_CHN_LOW_THRES 1250U
@@ -30,11 +30,20 @@ static rcInput_t rcInputs;
 #define POSITION_LIGHT 31U 
 #define BRAKE_LIGHT 255U
 
+// accepted deviations
+#define THR_CENTER_MAX_OFFSET 100U
+#define THR_LIMIT_MAX_OFFSET 100U 
+
+// the offset from center that is not considered action
+#define THR_CENTER_DEADBAND 50U
+
 // when easying off throttle, what decrease should trigger brake
 #define THR_BRAKE_TRIGGER_OFFSET 20U
 
 // how much to keep brake light on when backing off throttle
 #define BRAKE_LIGHT_OFF_DELAY 5U
+
+static uint32_t thrCenterPulseWidth = 1500;
 
 //
 
@@ -49,6 +58,15 @@ void setup() {
   pinMode(PIN_HAZARD, OUTPUT);
   analogWrite(PIN_BRAKE, 0);
   analogWrite(PIN_HAZARD, 0);
+
+  // autodetect center thr pulse
+  while (true) {
+    uint32_t thrPulseWidth = pulseIn(PIN_THR, HIGH, 25000);
+    if (thrPulseWidth >= 1500 - THR_CENTER_MAX_OFFSET && thrPulseWidth <= 1500 + THR_CENTER_MAX_OFFSET) {
+      thrCenterPulseWidth = thrPulseWidth;
+      break;
+    }
+  }
 
   // ready
   digitalWrite(LED_BUILTIN, 1);
@@ -78,9 +96,9 @@ void processThr(const uint32_t now, const uint32_t pulseWidth, const bool blinkP
   static uint32_t brakeLightCountdown = 0;
 
   THR_STATES thrState = NEUTRAL;
-  if (pulseWidth <= 1450U) {
+  if (pulseWidth <= thrCenterPulseWidth - THR_CENTER_DEADBAND) {
     thrState = BRAKE;
-  } else if (pulseWidth >= 1550U) {
+  } else if (pulseWidth >= thrCenterPulseWidth + THR_CENTER_DEADBAND) {
     thrState = ACCEL;
   }
 
@@ -156,6 +174,7 @@ void processAux2P(const uint32_t now, const uint32_t pulseWidth, const bool blin
   } else if (pulseWidth < AUX_CHN_LOW_THRES) {
     analogWrite(PIN_HAZARD, 0);
   } else {
+    // unknown position, default to off
     analogWrite(PIN_HAZARD, 0);
   }
 }
@@ -171,9 +190,17 @@ void loop() {
 
   uint32_t thrPulseWidth = pulseIn(PIN_THR, HIGH, 25000);
   if (thrPulseWidth > 0) {
+    // fix overflow if in limits
+    if (thrPulseWidth < 1000U && thrPulseWidth >= 1000U - THR_LIMIT_MAX_OFFSET) {
+      thrPulseWidth = 1000U;
+    }
+    if (thrPulseWidth > 2000U && thrPulseWidth <= 2000U + THR_LIMIT_MAX_OFFSET) {
+      thrPulseWidth = 2000U;
+    }
     rcInputs.thrLastPulseWidth = thrPulseWidth;
     rcInputs.thrLastPulseStart = now;
   }
+
   uint32_t auxPulseWidth = pulseIn(PIN_AUX, HIGH, 25000);
   if (auxPulseWidth > 0) {
     rcInputs.auxLastPulseWidth = auxPulseWidth;
