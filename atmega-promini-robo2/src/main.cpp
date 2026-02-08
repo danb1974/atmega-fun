@@ -83,7 +83,7 @@ void setup() {
 
   // led matrix
   FastLED.addLeds<WS2812, LED_PIN, GRB>(ledStrip, LED_COUNT);
-  FastLED.setBrightness(16);
+  FastLED.setBrightness(64);
   FastLED.setCorrection(TypicalLEDStrip);
   FastLED.setDither(true);
   // and do a short test pattern
