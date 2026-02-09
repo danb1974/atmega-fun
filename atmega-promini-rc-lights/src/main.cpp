@@ -38,11 +38,12 @@ static rcInput_t rcInputs;
 #define THR_CENTER_DEADBAND 50U
 
 // when easying off throttle, what decrease should trigger brake
-#define THR_BRAKE_TRIGGER_OFFSET 20U
+#define THR_ACCEL_BRAKE_TRIGGER_OFFSET 20U
 
 // how much to keep brake light on when backing off throttle
 #define BRAKE_LIGHT_OFF_DELAY 5U
 
+// will be adjusted during setup via auto calibration
 static uint32_t thrCenterPulseWidth = 1500;
 
 //
@@ -60,7 +61,8 @@ void setup() {
   analogWrite(PIN_HAZARD, 0);
 
   // autodetect center thr pulse
-  while (true) {
+  int8_t tries = 100;
+  while (tries-- > 0) {
     uint32_t thrPulseWidth = pulseIn(PIN_THR, HIGH, 25000);
     if (thrPulseWidth >= 1500 - THR_CENTER_MAX_OFFSET && thrPulseWidth <= 1500 + THR_CENTER_MAX_OFFSET) {
       thrCenterPulseWidth = thrPulseWidth;
@@ -78,22 +80,24 @@ enum THR_STATES {
   BRAKE
 };
 
-// Brake light rules
-// - brake from neutral && neutral short : ON
-// - any to neutral : ON
-// - any to accel: OFF
-// - in accell (optional)
-//   - if higher: OFF
-//   - if lower: ON
+// ESC behaviour (some have other reverse rules)
+// - if accel, you have to brake before reverse
+//  - even if rolling to standstill, first reverse is still brake 
+
+// Rules
+// - if accel, set next_reverse_is_brake
+// - if brake, we know if this is brake or reverse
+// - use a min brake timer to reduce flicker
 
 void processThr(const uint32_t now, const uint32_t pulseWidth, const bool blinkPulse) {
   static THR_STATES lastThrState = NEUTRAL;
-  static uint32_t lastThrStateTs = micros();
+  // static uint32_t lastThrStateTs = micros();
   static uint32_t lastThrPulseWidth = 0;
-  static uint32_t lastThrPulseWidthTs = micros();
+  // static uint32_t lastThrPulseWidthTs = micros();
   static bool brakeLight = true;
   static bool throttleMoved = false;
   static uint32_t brakeLightCountdown = 0;
+  static bool nextBrakeIsBrake = false;
 
   THR_STATES thrState = NEUTRAL;
   if (pulseWidth <= thrCenterPulseWidth - THR_CENTER_DEADBAND) {
@@ -118,15 +122,18 @@ void processThr(const uint32_t now, const uint32_t pulseWidth, const bool blinkP
       // transition to accel; accel variation will be handled later
       brakeLight = false;
       brakeLightCountdown = 0;
+      nextBrakeIsBrake = true;
 
     } else if (thrState == NEUTRAL) {
+      // neutral is always brake
       brakeLight = true;
+      nextBrakeIsBrake = false;
 
     } else if (thrState == BRAKE) {
-      if (lastThrState == NEUTRAL && now - lastThrStateTs < 50000U) { // micros
+      // this one depends on prev accel
+      if (nextBrakeIsBrake) {
         brakeLight = true;
-      } else if (lastThrState == ACCEL) {
-        brakeLight = true;
+        nextBrakeIsBrake = false;
       } else {
         brakeLight = false;
         brakeLightCountdown = 0;
@@ -136,9 +143,9 @@ void processThr(const uint32_t now, const uint32_t pulseWidth, const bool blinkP
 
   // pulse variation rules
   if (pulseWidth != lastThrPulseWidth) {
-    // brake on accell going down
+    // brake on accel going down
     if (thrState == ACCEL && lastThrState == ACCEL) {
-      if (pulseWidth < lastThrPulseWidth - THR_BRAKE_TRIGGER_OFFSET) {
+      if (pulseWidth < lastThrPulseWidth - THR_ACCEL_BRAKE_TRIGGER_OFFSET) {
         brakeLight = true;
         brakeLightCountdown = BRAKE_LIGHT_OFF_DELAY;
       } else {
@@ -149,11 +156,11 @@ void processThr(const uint32_t now, const uint32_t pulseWidth, const bool blinkP
 
   // after rules are evaluated, update state and pulse width
   if (thrState != lastThrState) {
-    lastThrStateTs = now;
+    // lastThrStateTs = now;
     lastThrState = thrState;
   }
   if (pulseWidth != lastThrPulseWidth) {
-    lastThrPulseWidthTs = now;
+    // lastThrPulseWidthTs = now;
     lastThrPulseWidth = pulseWidth;
   }
 
@@ -201,6 +208,7 @@ void loop() {
     rcInputs.thrLastPulseStart = now;
   }
 
+  // for this one we do not really care about center or limits
   uint32_t auxPulseWidth = pulseIn(PIN_AUX, HIGH, 25000);
   if (auxPulseWidth > 0) {
     rcInputs.auxLastPulseWidth = auxPulseWidth;
@@ -215,6 +223,7 @@ void loop() {
   bool validPulse = validAux && validThr;
   bool freshPulse = freshAux && freshThr;
 
+  // keep a limited bad consecutive pulse count for later
   if (validPulse && freshPulse) {
     badConsecutivePulses = 0;
   } else {
@@ -228,9 +237,11 @@ void loop() {
   errorPulse = errorPattern[pulse % sizeof(errorPattern)];
 
   if (freshPulse && badConsecutivePulses < 10) {
+    // good enough signal
     processThr(now, rcInputs.thrLastPulseWidth, blinkPulse);
     processAux2P(now, rcInputs.auxLastPulseWidth, blinkPulse);
   } else {
+    // we're lost
     analogWrite(PIN_BRAKE, (1 - errorPulse) * 255);
     analogWrite(PIN_HAZARD, errorPulse * 255);
   }
