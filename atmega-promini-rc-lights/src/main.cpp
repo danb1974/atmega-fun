@@ -127,7 +127,7 @@ void processThr(const uint32_t now, const uint32_t pulseWidth, const bool blinkP
     } else if (thrState == NEUTRAL) {
       // neutral is always brake
       brakeLight = true;
-      nextBrakeIsBrake = false;
+      // nextBrakeIsBrake = false;
 
     } else if (thrState == BRAKE) {
       // this one depends on prev accel
